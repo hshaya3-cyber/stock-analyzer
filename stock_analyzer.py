@@ -17,7 +17,7 @@ import random
 import warnings
 from datetime import datetime, timedelta
 
-import requests
+from curl_cffi import requests as cffi_requests
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -31,31 +31,17 @@ import ta
 warnings.filterwarnings('ignore')
 
 
-# ── Yahoo Finance session with browser-like headers ──────────────────────────
+# ── Yahoo Finance session with browser-like impersonation ────────────────────
 # Streamlit Cloud IPs get rate-limited aggressively by Yahoo Finance.
-# Using a requests session with realistic headers + retry logic mitigates this.
-
-_USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-]
+# Using curl_cffi with browser impersonation bypasses this reliably.
 
 def _make_yf_session():
-    """Create a requests session with browser-like headers for yfinance."""
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": random.choice(_USER_AGENTS),
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate",
-        "Connection": "keep-alive",
-    })
+    """Create a curl_cffi session with browser impersonation for yfinance."""
+    session = cffi_requests.Session(impersonate="chrome")
     return session
 
 def _yf_ticker(symbol: str):
-    """Create a yf.Ticker with a browser-like session to avoid rate limiting."""
+    """Create a yf.Ticker with a browser-impersonating session to avoid rate limiting."""
     return yf.Ticker(symbol, session=_make_yf_session())
 
 def _yf_fetch_with_retry(symbol, period, interval='1d', max_retries=3):
