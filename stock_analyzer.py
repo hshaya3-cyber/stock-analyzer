@@ -13,6 +13,7 @@ import sys
 import os
 import json
 import warnings
+import time
 from datetime import datetime, timedelta
 
 import yfinance as yf
@@ -51,11 +52,29 @@ ACCENT_PURPLE = '#b388ff'
 
 def fetch_data(ticker: str, period: str = '6mo') -> tuple:
     """Fetch stock data and info from Yahoo Finance."""
-    stock = yf.Ticker(ticker)
-    df = stock.history(period=period, auto_adjust=True)
-    if df.empty:
-        raise ValueError(f"No data found for ticker '{ticker}'")
-    info = stock.info or {}
+    # Retry logic to handle Yahoo Finance rate limiting
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            stock = yf.Ticker(ticker)
+            df = stock.history(period=period, auto_adjust=True)
+            if df.empty:
+                if attempt < max_retries - 1:
+                    wait = (attempt + 1) * 5
+                    print(f"  [RETRY] Empty data for {ticker}, waiting {wait}s...")
+                    time.sleep(wait)
+                    continue
+                raise ValueError(f"No data found for ticker '{ticker}'")
+            info = stock.info or {}
+            break
+        except Exception as e:
+            if "Too Many Requests" in str(e) or "Rate" in str(e):
+                if attempt < max_retries - 1:
+                    wait = (attempt + 1) * 8
+                    print(f"  [RETRY] Rate limited, waiting {wait}s (attempt {attempt+1}/{max_retries})...")
+                    time.sleep(wait)
+                    continue
+            raise
 
     # ── Enhance analyst data from multiple yfinance endpoints ──
     # yf.Ticker.info often returns None or 'none' for analyst fields.
