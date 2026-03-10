@@ -12,10 +12,12 @@ Dependencies: pip install yfinance pandas numpy ta matplotlib reportlab
 import sys
 import os
 import json
-import warnings
 import time
+import random
+import warnings
 from datetime import datetime, timedelta
 
+import requests
 import yfinance as yf
 import pandas as pd
 import numpy as np
@@ -27,6 +29,57 @@ from matplotlib.dates import DateFormatter, MonthLocator, WeekdayLocator
 import ta
 
 warnings.filterwarnings('ignore')
+
+
+# ── Yahoo Finance session with browser-like headers ──────────────────────────
+# Streamlit Cloud IPs get rate-limited aggressively by Yahoo Finance.
+# Using a requests session with realistic headers + retry logic mitigates this.
+
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+]
+
+def _make_yf_session():
+    """Create a requests session with browser-like headers for yfinance."""
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": random.choice(_USER_AGENTS),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "keep-alive",
+    })
+    return session
+
+def _yf_ticker(symbol: str):
+    """Create a yf.Ticker with a browser-like session to avoid rate limiting."""
+    return yf.Ticker(symbol, session=_make_yf_session())
+
+def _yf_fetch_with_retry(symbol, period, interval='1d', max_retries=3):
+    """Fetch history with automatic retry on rate limiting."""
+    for attempt in range(max_retries):
+        try:
+            stock = _yf_ticker(symbol)
+            df = stock.history(period=period, interval=interval, auto_adjust=True)
+            if df is not None and not df.empty:
+                return stock, df
+            # Empty result — might be soft rate limit
+            if attempt < max_retries - 1:
+                wait = (attempt + 1) * 5 + random.uniform(1, 3)
+                print(f"  [RETRY] Empty data for {symbol}, waiting {wait:.0f}s...")
+                time.sleep(wait)
+        except Exception as e:
+            err_str = str(e)
+            if ("Too Many Requests" in err_str or "Rate" in err_str or "401" in err_str) and attempt < max_retries - 1:
+                wait = (attempt + 1) * 8 + random.uniform(1, 4)
+                print(f"  [RETRY] Rate limited on {symbol}, waiting {wait:.0f}s (attempt {attempt+1}/{max_retries})...")
+                time.sleep(wait)
+            else:
+                raise
+    raise ValueError(f"No data for '{symbol}' after {max_retries} retries (rate limited)")
 
 # ── Styling ──────────────────────────────────────────────────────────────────
 plt.rcParams.update({
@@ -52,29 +105,8 @@ ACCENT_PURPLE = '#b388ff'
 
 def fetch_data(ticker: str, period: str = '6mo') -> tuple:
     """Fetch stock data and info from Yahoo Finance."""
-    # Retry logic to handle Yahoo Finance rate limiting
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            stock = yf.Ticker(ticker)
-            df = stock.history(period=period, auto_adjust=True)
-            if df.empty:
-                if attempt < max_retries - 1:
-                    wait = (attempt + 1) * 5
-                    print(f"  [RETRY] Empty data for {ticker}, waiting {wait}s...")
-                    time.sleep(wait)
-                    continue
-                raise ValueError(f"No data found for ticker '{ticker}'")
-            info = stock.info or {}
-            break
-        except Exception as e:
-            if "Too Many Requests" in str(e) or "Rate" in str(e):
-                if attempt < max_retries - 1:
-                    wait = (attempt + 1) * 8
-                    print(f"  [RETRY] Rate limited, waiting {wait}s (attempt {attempt+1}/{max_retries})...")
-                    time.sleep(wait)
-                    continue
-            raise
+    stock, df = _yf_fetch_with_retry(ticker, period=period, interval='1d')
+    info = stock.info or {}
 
     # ── Enhance analyst data from multiple yfinance endpoints ──
     # yf.Ticker.info often returns None or 'none' for analyst fields.
@@ -944,7 +976,8 @@ def compute_multi_timeframe_fibonacci(ticker_symbol: str, daily_df=None) -> dict
 
     # ── Weekly ──
     try:
-        stock = yf.Ticker(ticker_symbol)
+        time.sleep(random.uniform(1, 3))
+        stock = _yf_ticker(ticker_symbol)
         weekly_df = stock.history(period='5y', interval='1wk', auto_adjust=True)
         if weekly_df is not None and len(weekly_df) >= 30:
             results['Weekly'] = analyze_fibonacci(weekly_df, lookback=104)
@@ -956,7 +989,8 @@ def compute_multi_timeframe_fibonacci(ticker_symbol: str, daily_df=None) -> dict
 
     # ── Monthly ──
     try:
-        stock = yf.Ticker(ticker_symbol)
+        time.sleep(random.uniform(1, 3))
+        stock = _yf_ticker(ticker_symbol)
         monthly_df = stock.history(period='10y', interval='1mo', auto_adjust=True)
         if monthly_df is not None and len(monthly_df) >= 20:
             results['Monthly'] = analyze_fibonacci(monthly_df, lookback=60)
@@ -1986,6 +2020,7 @@ def analyze_multi_timeframe_trend(stock) -> dict:
 
     for tf_name, params in timeframes.items():
         try:
+            time.sleep(random.uniform(0.5, 2))
             df = stock.history(period=params['period'], interval=params['interval'], auto_adjust=True)
             if df.empty or len(df) < 50:
                 results[tf_name] = {
@@ -3287,7 +3322,7 @@ def compute_multi_timeframe_evaluation(ticker_symbol: str, daily_df=None) -> dic
     ]
 
     results = {}
-    stock = yf.Ticker(ticker_symbol)
+    stock = _yf_ticker(ticker_symbol)
 
     for tf in timeframes:
         try:
@@ -3295,6 +3330,7 @@ def compute_multi_timeframe_evaluation(ticker_symbol: str, daily_df=None) -> dic
                 # Reuse the daily dataframe we already have (with indicators computed)
                 df_tf = daily_df.copy()
             else:
+                time.sleep(random.uniform(0.5, 2))
                 df_tf = stock.history(period=tf['period'], interval=tf['interval'])
                 if df_tf is None or len(df_tf) < tf['min_bars']:
                     results[tf['label']] = {'available': False, 'reason': f'Insufficient data ({len(df_tf) if df_tf is not None else 0} bars)'}
