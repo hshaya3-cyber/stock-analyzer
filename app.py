@@ -165,8 +165,8 @@ if run:
             q2.markdown(f'<div class="dc"><div class="l">Score</div><div class="v">{signals.get("total_score",0)}</div></div>',unsafe_allow_html=True)
             q3.markdown(f'<div class="dc"><div class="l">Rating</div><div class="v">{rating}</div></div>',unsafe_allow_html=True)
             q4.markdown(f'<div class="dc"><div class="l">Target</div><div class="v">{fmt(tp,p="$")}</div></div>',unsafe_allow_html=True)
-            q5.markdown(f'<div class="dc"><div class="l">Analysts</div><div class="v">{info.get("numberOfAnalystOpinions","N/A")}</div></div>',unsafe_allow_html=True)
-            q6.markdown(f'<div class="dc"><div class="l">Upside</div><div class="v">{ups}</div></div>',unsafe_allow_html=True)
+            q5.markdown(f'<div class="dc"><div class="l">Upside</div><div class="v">{ups}</div></div>',unsafe_allow_html=True)
+            q6.markdown(f'<div class="dc"><div class="l">Analysts</div><div class="v">{info.get("numberOfAnalystOpinions","N/A")}</div></div>',unsafe_allow_html=True)
             h_cls="h-pass" if h_status=="HALAL" else "h-fail" if h_status=="NON-COMPLIANT" else "h-warn"
             q7.markdown(f'<div class="dc"><div class="l">Halal</div><div class="v"><span class="{h_cls}">{h_status}</span></div></div>',unsafe_allow_html=True)
 
@@ -185,8 +185,8 @@ if run:
                 p1,p2,p3,p4=st.columns(4)
                 p1.markdown(f'<div class="dc"><div class="l">Close</div><div class="v">${cur:,.2f}</div></div>',unsafe_allow_html=True)
                 p2.markdown(f'<div class="dc"><div class="l">Change</div><div class="v" style="color:{chg_c}">{pct_chg:+.2f}%</div></div>',unsafe_allow_html=True)
-                p3.markdown(f'<div class="dc"><div class="l">MACD</div><div class="v">{sf(L,"MACD"):.4f}</div></div>',unsafe_allow_html=True)
-                p4.markdown(f'<div class="dc"><div class="l">Market Cap</div><div class="v">{fmt(info.get("marketCap"),p="$")}</div></div>',unsafe_allow_html=True)
+                p3.markdown(f'<div class="dc"><div class="l">52W High</div><div class="v">{fmt(info.get("fiftyTwoWeekHigh"),p="$")}</div></div>',unsafe_allow_html=True)
+                p4.markdown(f'<div class="dc"><div class="l">52W Low</div><div class="v">{fmt(info.get("fiftyTwoWeekLow"),p="$")}</div></div>',unsafe_allow_html=True)
 
                 sh("SIGNAL SUMMARY")
                 ts=signals.get('trend','NEUTRAL');tsc=signals.get('trend_score',0)
@@ -221,15 +221,6 @@ if run:
                     b2.markdown(f"**Medium:** {sg(bo['medium_term']['signal'])} ({bo['medium_term']['score']})",unsafe_allow_html=True)
                     b3.markdown(f"**Long:** {sg(bo['long_term']['signal'])} ({bo['long_term']['score']})",unsafe_allow_html=True)
 
-                # Quick Halal summary
-                sh("HALAL STATUS")
-                hc2="h-pass" if h_status=="HALAL" else "h-fail" if h_status=="NON-COMPLIANT" else "h-warn"
-                st.markdown(f'<span class="{hc2}">{h_status}</span> &nbsp; ({halal.get("pass_count",0)}/{halal.get("total_checks",4)} criteria)',unsafe_allow_html=True)
-                for d in halal.get('details',[]):
-                    ic="✅" if d['status']=='PASS' else "❌" if d['status']=='FAIL' else "⚠️"
-                    st.markdown(f"{ic} **{d['criterion']}** — {d['status']} — {d['value']}")
-                    if d.get('note'): st.caption(d['note'])
-
             # ═══════════ TAB 2: CHARTS ═══════════
             with tab2:
                 has_charts=False
@@ -258,7 +249,7 @@ if run:
 
                 sh("MOMENTUM INDICATORS")
                 m1,m2,m3,m4=st.columns(4)
-                for c,l,v in [(m1,"RSI (14)",f"{sf(L,'RSI'):.1f}"),(m2,"CCI (20)",f"{sf(L,'CCI_20'):.1f}"),(m3,"StochRSI K/D",f"{sf(L,'StochRSI_K'):.1f} / {sf(L,'StochRSI_D'):.1f}"),(m4,"MFI",f"{sf(L,'MFI'):.1f}")]:
+                for c,l,v in [(m1,"RSI (14)",f"{sf(L,'RSI'):.1f}"),(m2,"CCI (20)",f"{sf(L,'CCI_20'):.1f}"),(m3,"StochRSI K/D",f"{sf(L,'StochRSI_K'):.1f} / {sf(L,'StochRSI_D'):.1f}"),(m4,"MFI (14)",f"{sf(L,'MFI'):.1f}")]:
                     c.markdown(f'<div class="dc"><div class="l">{l}</div><div class="v">{v}</div></div>',unsafe_allow_html=True)
                 m5,m6,m7,m8=st.columns(4)
                 atr_p=f"({sf(L,'ATR',0)/cur*100:.1f}%)" if cur>0 else ""
