@@ -14,9 +14,9 @@ import tempfile
 import contextlib
 from datetime import datetime
 
-# ── FMP API Key: load from Streamlit secrets or environment ──────────────────
-if "FMP_API_KEY" in st.secrets:
-    os.environ["FMP_API_KEY"] = st.secrets["FMP_API_KEY"]
+# ── Alpha Vantage API Key: load from Streamlit secrets or environment ────────
+if "AV_API_KEY" in st.secrets:
+    os.environ["AV_API_KEY"] = st.secrets["AV_API_KEY"]
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -175,14 +175,15 @@ with st.sidebar:
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
-# Check for FMP API key
-if not os.environ.get("FMP_API_KEY"):
+# Check for Alpha Vantage API key
+if not os.environ.get("AV_API_KEY"):
     st.warning(
-        "⚠️ **FMP API Key not found.** Add your free API key to run analysis.\n\n"
-        "1. Get a free key at [financialmodelingprep.com](https://site.financialmodelingprep.com/)\n"
+        "⚠️ **Alpha Vantage API Key not found.** Add your free API key to run analysis.\n\n"
+        "1. Get a free key at [alphavantage.co](https://www.alphavantage.co/support/#api-key)\n"
         "2. In Streamlit Cloud: click **Manage app** → **Settings** → **Secrets** → add:\n"
-        "```\nFMP_API_KEY = \"your_key_here\"\n```\n"
-        "3. Click **Save** — the app will restart automatically."
+        "```\nAV_API_KEY = \"your_key_here\"\n```\n"
+        "3. Click **Save** — the app will restart automatically.\n\n"
+        "**Free tier:** 25 requests/day (~1-2 full stock analyses per day)"
     )
 run_button = st.button("🚀  Run Analysis", use_container_width=True)
 
