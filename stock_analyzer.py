@@ -6,7 +6,8 @@ Usage: python stock_analyzer.py AAPL
        python stock_analyzer.py AAPL --period 1y
        python stock_analyzer.py AAPL MSFT NVDA  (multi-stock comparison)
 
-Dependencies: pip install yfinance pandas numpy ta matplotlib reportlab
+Dependencies: pip install pandas numpy ta matplotlib reportlab requests
+Data source: Financial Modeling Prep (FMP) — free tier: 250 requests/day
 """
 
 import sys
@@ -17,8 +18,6 @@ import random
 import warnings
 from datetime import datetime, timedelta
 
-from curl_cffi import requests as cffi_requests
-import yfinance as yf
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -28,44 +27,13 @@ import matplotlib.gridspec as gridspec
 from matplotlib.dates import DateFormatter, MonthLocator, WeekdayLocator
 import ta
 
+# ── FMP data adapter (replaces yfinance) ──
+from fmp_adapter import fetch_data as fmp_fetch_data, FMPStock, fetch_historical_interval
+
 warnings.filterwarnings('ignore')
 
 
-# ── Yahoo Finance session with browser-like impersonation ────────────────────
-# Streamlit Cloud IPs get rate-limited aggressively by Yahoo Finance.
-# Using curl_cffi with browser impersonation bypasses this reliably.
 
-def _make_yf_session():
-    """Create a curl_cffi session with browser impersonation for yfinance."""
-    session = cffi_requests.Session(impersonate="chrome")
-    return session
-
-def _yf_ticker(symbol: str):
-    """Create a yf.Ticker with a browser-impersonating session to avoid rate limiting."""
-    return yf.Ticker(symbol, session=_make_yf_session())
-
-def _yf_fetch_with_retry(symbol, period, interval='1d', max_retries=3):
-    """Fetch history with automatic retry on rate limiting."""
-    for attempt in range(max_retries):
-        try:
-            stock = _yf_ticker(symbol)
-            df = stock.history(period=period, interval=interval, auto_adjust=True)
-            if df is not None and not df.empty:
-                return stock, df
-            # Empty result — might be soft rate limit
-            if attempt < max_retries - 1:
-                wait = (attempt + 1) * 5 + random.uniform(1, 3)
-                print(f"  [RETRY] Empty data for {symbol}, waiting {wait:.0f}s...")
-                time.sleep(wait)
-        except Exception as e:
-            err_str = str(e)
-            if ("Too Many Requests" in err_str or "Rate" in err_str or "401" in err_str) and attempt < max_retries - 1:
-                wait = (attempt + 1) * 8 + random.uniform(1, 4)
-                print(f"  [RETRY] Rate limited on {symbol}, waiting {wait:.0f}s (attempt {attempt+1}/{max_retries})...")
-                time.sleep(wait)
-            else:
-                raise
-    raise ValueError(f"No data for '{symbol}' after {max_retries} retries (rate limited)")
 
 # ── Styling ──────────────────────────────────────────────────────────────────
 plt.rcParams.update({
@@ -90,128 +58,10 @@ ACCENT_PURPLE = '#b388ff'
 
 
 def fetch_data(ticker: str, period: str = '6mo') -> tuple:
-    """Fetch stock data and info from Yahoo Finance."""
-    stock, df = _yf_fetch_with_retry(ticker, period=period, interval='1d')
-    info = stock.info or {}
-
-    # ── Enhance analyst data from multiple yfinance endpoints ──
-    # yf.Ticker.info often returns None or 'none' for analyst fields.
-    # Try dedicated endpoints as fallback for more reliable data.
-
-    def _is_missing(val):
-        """Check if a value is effectively missing."""
-        return val is None or val == 'none' or val == 'None' or val == '' or val == 0
-
-    print(f"  [DEBUG] info.targetMeanPrice = {info.get('targetMeanPrice')}")
-    print(f"  [DEBUG] info.recommendationKey = {info.get('recommendationKey')}")
-    print(f"  [DEBUG] info.numberOfAnalystOpinions = {info.get('numberOfAnalystOpinions')}")
-
-    # Fallback 1: analyst_price_targets
-    if _is_missing(info.get('targetMeanPrice')):
-        try:
-            apt = stock.analyst_price_targets
-            print(f"  [DEBUG] analyst_price_targets type={type(apt).__name__}, value={apt}")
-            if apt is not None:
-                if isinstance(apt, dict):
-                    info['targetMeanPrice'] = apt.get('mean') or apt.get('current')
-                    info['targetHighPrice'] = apt.get('high')
-                    info['targetLowPrice'] = apt.get('low')
-                    n = apt.get('numberOfAnalystOpinions')
-                    if n:
-                        info['numberOfAnalystOpinions'] = n
-                elif isinstance(apt, pd.DataFrame) and not apt.empty:
-                    if 'mean' in apt.columns:
-                        info['targetMeanPrice'] = apt['mean'].iloc[0]
-                    elif 'current' in apt.columns:
-                        info['targetMeanPrice'] = apt['current'].iloc[0]
-                elif isinstance(apt, pd.Series):
-                    info['targetMeanPrice'] = apt.get('mean') or apt.get('current')
-                    info['targetHighPrice'] = apt.get('high')
-                    info['targetLowPrice'] = apt.get('low')
-            print(f"  [DEBUG] After apt: targetMeanPrice = {info.get('targetMeanPrice')}")
-        except Exception as e:
-            print(f"  [DEBUG] analyst_price_targets failed: {e}")
-
-    # Fallback 2: recommendations_summary for rating & breakdown
-    # Always try this to get the breakdown, even if we have a rating
-    try:
-        rec = stock.recommendations_summary
-        print(f"  [DEBUG] recommendations_summary type={type(rec).__name__}")
-        if rec is not None and isinstance(rec, pd.DataFrame) and not rec.empty:
-            print(f"  [DEBUG] recommendations_summary columns={list(rec.columns)}")
-            print(f"  [DEBUG] recommendations_summary:\n{rec.head()}")
-            latest = rec.iloc[0]
-            sb = int(latest.get('strongBuy', 0) or 0)
-            b = int(latest.get('buy', 0) or 0)
-            h = int(latest.get('hold', 0) or 0)
-            s = int(latest.get('sell', 0) or 0)
-            ss = int(latest.get('strongSell', 0) or 0)
-            total = sb + b + h + s + ss
-            if total > 0:
-                if _is_missing(info.get('numberOfAnalystOpinions')):
-                    info['numberOfAnalystOpinions'] = total
-                buy_pct = (sb + b) / total
-                sell_pct = (s + ss) / total
-                if _is_missing(info.get('recommendationKey')):
-                    if buy_pct >= 0.6:
-                        info['recommendationKey'] = 'strong_buy' if sb > b else 'buy'
-                    elif sell_pct >= 0.6:
-                        info['recommendationKey'] = 'strong_sell' if ss > s else 'sell'
-                    elif buy_pct > sell_pct:
-                        info['recommendationKey'] = 'buy'
-                    elif sell_pct > buy_pct:
-                        info['recommendationKey'] = 'sell'
-                    else:
-                        info['recommendationKey'] = 'hold'
-                info['_analyst_breakdown'] = {
-                    'strongBuy': sb, 'buy': b, 'hold': h,
-                    'sell': s, 'strongSell': ss, 'total': total
-                }
-                print(f"  [DEBUG] After rec_summary: rating={info.get('recommendationKey')}, total={total}")
-    except Exception as e:
-        print(f"  [DEBUG] recommendations_summary failed: {e}")
-
-    # Fallback 3: recommendations (individual analyst actions) for count
-    if _is_missing(info.get('numberOfAnalystOpinions')):
-        try:
-            recs = stock.recommendations
-            print(f"  [DEBUG] recommendations type={type(recs).__name__}")
-            if recs is not None and isinstance(recs, pd.DataFrame) and not recs.empty:
-                from datetime import timedelta
-                cutoff = pd.Timestamp.now() - timedelta(days=90)
-                try:
-                    if hasattr(recs.index, 'tz') and recs.index.tz is not None:
-                        cutoff = cutoff.tz_localize(recs.index.tz)
-                    recent = recs[recs.index >= cutoff]
-                except Exception:
-                    recent = recs.tail(20)
-                info['numberOfAnalystOpinions'] = len(recent) if not recent.empty else len(recs)
-                print(f"  [DEBUG] After recommendations: count={info['numberOfAnalystOpinions']}")
-        except Exception as e:
-            print(f"  [DEBUG] recommendations failed: {e}")
-
-    # Fallback 4: upgrades_downgrades for additional context
-    if _is_missing(info.get('numberOfAnalystOpinions')):
-        try:
-            ud = stock.upgrades_downgrades
-            if ud is not None and isinstance(ud, pd.DataFrame) and not ud.empty:
-                from datetime import timedelta
-                cutoff = pd.Timestamp.now() - timedelta(days=90)
-                try:
-                    if hasattr(ud.index, 'tz') and ud.index.tz is not None:
-                        cutoff = cutoff.tz_localize(ud.index.tz)
-                    recent = ud[ud.index >= cutoff]
-                except Exception:
-                    recent = ud.tail(20)
-                info['numberOfAnalystOpinions'] = len(recent) if not recent.empty else len(ud)
-                print(f"  [DEBUG] After upgrades_downgrades: count={info['numberOfAnalystOpinions']}")
-        except Exception as e:
-            print(f"  [DEBUG] upgrades_downgrades failed: {e}")
-
-    print(f"  [FINAL] targetMeanPrice={info.get('targetMeanPrice')}, "
-          f"rating={info.get('recommendationKey')}, "
-          f"analysts={info.get('numberOfAnalystOpinions')}")
-
+    """Fetch stock data and info from FMP (Financial Modeling Prep)."""
+    df, info = fmp_fetch_data(ticker, period)
+    # Create an FMPStock object for functions that call stock.history()
+    stock = FMPStock(ticker)
     return df, info, stock
 
 
@@ -949,7 +799,7 @@ def compute_multi_timeframe_fibonacci(ticker_symbol: str, daily_df=None) -> dict
     Returns dict with keys: 'Daily', 'Weekly', 'Monthly' each containing
     the result of analyze_fibonacci() plus '_df' key with the raw DataFrame.
     """
-    import yfinance as yf
+    # Using FMP adapter (no yfinance needed)
 
     results = {}
 
@@ -963,7 +813,7 @@ def compute_multi_timeframe_fibonacci(ticker_symbol: str, daily_df=None) -> dict
     # ── Weekly ──
     try:
         time.sleep(random.uniform(1, 3))
-        stock = _yf_ticker(ticker_symbol)
+        stock = FMPStock(ticker_symbol)
         weekly_df = stock.history(period='5y', interval='1wk', auto_adjust=True)
         if weekly_df is not None and len(weekly_df) >= 30:
             results['Weekly'] = analyze_fibonacci(weekly_df, lookback=104)
@@ -976,7 +826,7 @@ def compute_multi_timeframe_fibonacci(ticker_symbol: str, daily_df=None) -> dict
     # ── Monthly ──
     try:
         time.sleep(random.uniform(1, 3))
-        stock = _yf_ticker(ticker_symbol)
+        stock = FMPStock(ticker_symbol)
         monthly_df = stock.history(period='10y', interval='1mo', auto_adjust=True)
         if monthly_df is not None and len(monthly_df) >= 20:
             results['Monthly'] = analyze_fibonacci(monthly_df, lookback=60)
@@ -3295,7 +3145,7 @@ def compute_multi_timeframe_evaluation(ticker_symbol: str, daily_df=None) -> dic
     Uses yfinance to fetch data for each interval, computes indicators, and runs evaluation.
     Falls back gracefully if a timeframe has insufficient data.
     """
-    import yfinance as yf
+    # Using FMP adapter (no yfinance needed)
 
     timeframes = [
         {'label': '5 Min',   'interval': '5m',  'period': '60d',  'min_bars': 50},
@@ -3308,7 +3158,7 @@ def compute_multi_timeframe_evaluation(ticker_symbol: str, daily_df=None) -> dic
     ]
 
     results = {}
-    stock = _yf_ticker(ticker_symbol)
+    stock = FMPStock(ticker_symbol)
 
     for tf in timeframes:
         try:
