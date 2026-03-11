@@ -1739,11 +1739,12 @@ def generate_signals(df: pd.DataFrame) -> dict:
         trend_details.append(('ADX < 25 (Weak/no trend)', '0', None))
 
     if trend_score >= 3:
-        signals['trend'] = ('BULLISH', trend_score)
+        signals['trend'] = 'BULLISH'
     elif trend_score <= -3:
-        signals['trend'] = ('BEARISH', trend_score)
+        signals['trend'] = 'BEARISH'
     else:
-        signals['trend'] = ('NEUTRAL', trend_score)
+        signals['trend'] = 'NEUTRAL'
+    signals['trend_score'] = trend_score
     signals['trend_details'] = trend_details
 
     # ── Momentum ──
@@ -1797,11 +1798,12 @@ def generate_signals(df: pd.DataFrame) -> dict:
         mom_details.append(('MFI < 20 (Oversold bonus)', '+1', True))
 
     if mom_score >= 2:
-        signals['momentum'] = ('BULLISH', mom_score)
+        signals['momentum'] = 'BULLISH'
     elif mom_score <= -2:
-        signals['momentum'] = ('BEARISH', mom_score)
+        signals['momentum'] = 'BEARISH'
     else:
-        signals['momentum'] = ('NEUTRAL', mom_score)
+        signals['momentum'] = 'NEUTRAL'
+    signals['mom_score'] = mom_score
     signals['mom_details'] = mom_details
 
     # ── Volatility ──
@@ -3369,22 +3371,17 @@ def generate_report(ticker: str, df: pd.DataFrame, info: dict, signals: dict,
     # ── Signal Summary ──
     overall = signals.get('overall', 'NEUTRAL')
     score = signals.get('total_score', 0)
-    if isinstance(score, tuple):
-        score = score[1] if len(score) > 1 else 0
-    trend_raw = signals.get('trend', ('NEUTRAL', 0))
-    if isinstance(trend_raw, tuple):
-        trend_sig, trend_score = trend_raw
-    else:
-        trend_sig, trend_score = str(trend_raw), 0
-    mom_raw = signals.get('momentum', ('NEUTRAL', 0))
-    if isinstance(mom_raw, tuple):
-        mom_sig, mom_score = mom_raw
-    else:
-        mom_sig, mom_score = str(mom_raw), 0
+    trend_sig = signals.get('trend', 'NEUTRAL')
+    trend_score = signals.get('trend_score', 0)
+    mom_sig = signals.get('momentum', 'NEUTRAL')
+    mom_score = signals.get('mom_score', 0)
     # Ensure scores are numeric
-    trend_score = int(trend_score) if isinstance(trend_score, (int, float)) else 0
-    mom_score = int(mom_score) if isinstance(mom_score, (int, float)) else 0
-    score = int(score) if isinstance(score, (int, float)) else 0
+    if not isinstance(trend_score, (int, float)):
+        trend_score = 0
+    if not isinstance(mom_score, (int, float)):
+        mom_score = 0
+    if not isinstance(score, (int, float)):
+        score = 0
     vol_signal = signals.get('volume', 'NORMAL')
     vol_notes = signals.get('volatility', [])
 
