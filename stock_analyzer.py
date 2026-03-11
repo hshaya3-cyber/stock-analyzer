@@ -4403,6 +4403,102 @@ def analyze_stock(ticker: str, period: str = '1y', output_dir: str = None):
     }
 
 
+def analyze_stock_web(ticker: str, period: str = '1y', output_dir: str = None):
+    """
+    Web-friendly analysis — returns all raw data for Streamlit rendering.
+    Skips PDF report generation. Keeps chart images for display.
+    """
+    if output_dir is None:
+        output_dir = os.getcwd()
+    os.makedirs(output_dir, exist_ok=True)
+
+    print(f"\n[*] Fetching data for {ticker.upper()}...")
+    df, info, stock = fetch_data(ticker, period)
+
+    print(f"[*] Computing technical indicators...")
+    df = compute_indicators(df)
+
+    print(f"[*] Detecting support & resistance levels...")
+    sr_levels = detect_support_resistance(df)
+
+    print(f"[*] Generating trading signals...")
+    signals = generate_signals(df)
+
+    print(f"[*] Detecting divergences...")
+    divergences = detect_divergences(df)
+
+    print(f"[*] Detecting chart patterns...")
+    chart_patterns = detect_chart_patterns(df)
+
+    print(f"[*] Detecting chart patterns (theEccentricTrader method)...")
+    eccentric_patterns = detect_eccentric_patterns(df)
+
+    print(f"[*] Analyzing Fibonacci levels...")
+    fib_result = analyze_fibonacci(df)
+
+    print(f"[*] Analyzing multi-timeframe Fibonacci (Weekly + Monthly)...")
+    mtf_fib = compute_multi_timeframe_fibonacci(ticker, daily_df=df)
+
+    print(f"[*] Screening Halal compliance...")
+    halal_result = screen_halal_compliance(info)
+
+    print(f"[*] Analyzing multi-timeframe trends...")
+    mtf_trends = analyze_multi_timeframe_trend(stock)
+
+    print(f"[*] Creating chart...")
+    chart_path = plot_chart(df, ticker, signals, sr_levels, divergences, output_dir)
+
+    print(f"[*] Creating Fibonacci chart...")
+    fib_chart_path = plot_fibonacci_chart(df, ticker, fib_result, output_dir)
+
+    fib_chart_weekly = None
+    fib_chart_monthly = None
+    weekly_fib = mtf_fib.get('Weekly', {})
+    monthly_fib = mtf_fib.get('Monthly', {})
+    if weekly_fib.get('available') and weekly_fib.get('_df') is not None:
+        print(f"[*] Creating Weekly Fibonacci chart...")
+        fib_chart_weekly = plot_fibonacci_chart_tf(weekly_fib['_df'], ticker, weekly_fib, 'Weekly', output_dir)
+    if monthly_fib.get('available') and monthly_fib.get('_df') is not None:
+        print(f"[*] Creating Monthly Fibonacci chart...")
+        fib_chart_monthly = plot_fibonacci_chart_tf(monthly_fib['_df'], ticker, monthly_fib, 'Monthly', output_dir)
+
+    print(f"[*] Computing multi-timeframe technical evaluation...")
+    mtf_eval = compute_multi_timeframe_evaluation(ticker, daily_df=df)
+
+    fundamentals = get_fundamental_summary(info)
+
+    # Compute barchart-style opinion
+    try:
+        bco = compute_external_technical_evaluation(df, info)
+    except Exception:
+        bco = {}
+
+    print(f"[OK] Analysis complete for {ticker.upper()}")
+
+    return {
+        'ticker': ticker,
+        'df': df,
+        'info': info,
+        'signals': signals,
+        'sr_levels': sr_levels,
+        'divergences': divergences,
+        'chart_patterns': chart_patterns,
+        'eccentric_patterns': eccentric_patterns,
+        'fib_result': fib_result,
+        'mtf_fib': mtf_fib,
+        'halal_result': halal_result,
+        'mtf_trends': mtf_trends,
+        'mtf_eval': mtf_eval,
+        'fundamentals': fundamentals,
+        'barchart_opinion': bco,
+        'chart_path': chart_path,
+        'fib_chart_path': fib_chart_path,
+        'fib_chart_weekly': fib_chart_weekly,
+        'fib_chart_monthly': fib_chart_monthly,
+        'latest_data': df.iloc[-1].to_dict(),
+    }
+
+
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print("Usage: python stock_analyzer.py TICKER [--period PERIOD]")
