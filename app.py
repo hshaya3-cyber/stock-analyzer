@@ -3,6 +3,7 @@ Stock Analyzer — Streamlit App
 ================================
 Web interface for the comprehensive stock analysis tool.
 Deploy on Streamlit Community Cloud via GitHub.
+Data source: Financial Modeling Prep (FMP) — free tier: 250 requests/day.
 """
 
 import streamlit as st
@@ -12,6 +13,10 @@ import io
 import tempfile
 import contextlib
 from datetime import datetime
+
+# ── FMP API Key: load from Streamlit secrets or environment ──────────────────
+if "FMP_API_KEY" in st.secrets:
+    os.environ["FMP_API_KEY"] = st.secrets["FMP_API_KEY"]
 
 # ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -162,13 +167,23 @@ with st.sidebar:
     st.markdown("---")
     st.markdown(
         "<div style='text-align:center; color:#8b949e; font-size:0.8rem;'>"
-        "Powered by yfinance · ta-lib · matplotlib · reportlab"
+        "Powered by FMP · ta · matplotlib · reportlab"
         "</div>",
         unsafe_allow_html=True,
     )
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
+
+# Check for FMP API key
+if not os.environ.get("FMP_API_KEY"):
+    st.warning(
+        "⚠️ **FMP API Key not found.** Add your free API key to run analysis.\n\n"
+        "1. Get a free key at [financialmodelingprep.com](https://site.financialmodelingprep.com/)\n"
+        "2. In Streamlit Cloud: click **Manage app** → **Settings** → **Secrets** → add:\n"
+        "```\nFMP_API_KEY = \"your_key_here\"\n```\n"
+        "3. Click **Save** — the app will restart automatically."
+    )
 run_button = st.button("🚀  Run Analysis", use_container_width=True)
 
 if run_button:
