@@ -13,7 +13,7 @@ import numpy as np
 if "AV_API_KEY" in st.secrets:
     os.environ["AV_API_KEY"] = st.secrets["AV_API_KEY"]
 
-st.set_page_config(page_title="Stock Analyzer Pro", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Stock Analyzer Pro", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CSS — DARK TERMINAL AESTHETIC
@@ -23,7 +23,22 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
 :root{--bg:#0a0e17;--card:#111827;--card2:#0d1117;--border:#1e293b;--accent:#22c55e;--red:#ef4444;--amber:#f59e0b;--blue:#3b82f6;--t1:#e2e8f0;--t2:#94a3b8;--t3:#64748b;--gdim:rgba(34,197,94,.12);--rdim:rgba(239,68,68,.12);--adim:rgba(245,158,11,.12);--bdim:rgba(59,130,246,.12)}
 .stApp{background:var(--bg)}
-section[data-testid="stSidebar"]{background:var(--card);border-right:1px solid var(--border)}
+
+/* Hide sidebar completely */
+section[data-testid="stSidebar"]{display:none}
+button[kind="header"]{display:none}
+[data-testid="collapsedControl"]{display:none}
+
+/* Mobile responsive */
+@media(max-width:768px){
+    .hdr{padding:.8rem 1rem;flex-direction:column;align-items:flex-start;gap:.5rem}
+    .hdr .tk{font-size:1.2rem}
+    .hdr .pr{margin-left:0;font-size:1.1rem}
+    .dc{padding:.5rem .6rem}
+    .dc .v{font-size:.85rem}
+    .stTabs [data-baseweb="tab"]{padding:.5rem .6rem;font-size:.6rem}
+    .mr{font-size:.72rem}
+}
 
 /* Header bar */
 .hdr{background:linear-gradient(135deg,#0f172a,#1e293b);border:1px solid var(--border);border-left:3px solid var(--accent);padding:1rem 1.5rem;border-radius:6px;margin-bottom:.8rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
@@ -110,22 +125,58 @@ def lvl(name,val,cur):
     return f"${val:,.2f} — {pos} ({pct:+.2f}%)"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SIDEBAR
+# INPUTS — Main page (mobile-friendly, no sidebar)
 # ═══════════════════════════════════════════════════════════════════════════════
-with st.sidebar:
-    st.markdown("### ⚙️ Configuration")
-    ticker_input=st.text_input("Ticker(s)",value="AAPL",placeholder="AAPL, MSFT")
-    period=st.selectbox("Period",options=["3mo","6mo","1y","2y","5y"],index=2)
-    st.markdown("---")
-    st.caption("Stock Analyzer Pro v2.0 · yfinance · Colab")
+if 'analysis_running' not in st.session_state:
+    st.session_state.analysis_running = False
+
+# Landing / Input section
+if not st.session_state.analysis_running:
+    st.markdown('''<div class="hdr">
+        <div><div class="tk">STOCK ANALYZER PRO</div>
+        <div class="co">Comprehensive Technical & Fundamental Analysis Terminal</div></div>
+    </div>''', unsafe_allow_html=True)
+
+    # Input row — compact for mobile
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        ticker_input = st.text_input("Ticker(s)", value="AAPL", placeholder="AAPL, MSFT, NVDA", label_visibility="collapsed")
+    with c2:
+        period = st.selectbox("Period", options=["3mo","6mo","1y","2y","5y"], index=2, label_visibility="collapsed")
+
+    run = st.button("▶  RUN ANALYSIS", use_container_width=True, type="primary")
+
+    if not run:
+        st.markdown("")
+        # Feature cards
+        f1, f2, f3 = st.columns(3)
+        f1.markdown(f'''<div class="dc" style="text-align:center;padding:1rem">
+            <div class="l">📊 Technical</div>
+            <div style="font-family:'DM Sans',sans-serif;font-size:.8rem;color:var(--t2);margin-top:.3rem">20+ indicators · Patterns · Fibonacci · Ichimoku</div>
+        </div>''', unsafe_allow_html=True)
+        f2.markdown(f'''<div class="dc" style="text-align:center;padding:1rem">
+            <div class="l">🔄 Multi-Timeframe</div>
+            <div style="font-family:'DM Sans',sans-serif;font-size:.8rem;color:var(--t2);margin-top:.3rem">Daily · Weekly · Monthly · 7 intervals</div>
+        </div>''', unsafe_allow_html=True)
+        f3.markdown(f'''<div class="dc" style="text-align:center;padding:1rem">
+            <div class="l">💰 Fundamentals</div>
+            <div style="font-family:'DM Sans',sans-serif;font-size:.8rem;color:var(--t2);margin-top:.3rem">Halal screening · Analyst consensus · Ratios</div>
+        </div>''', unsafe_allow_html=True)
+        st.caption("Enter one or more tickers separated by commas · Select analysis period · Click RUN")
+        st.caption("Stock Analyzer Pro v2.0 · Powered by yfinance via Google Colab")
+        st.stop()
+else:
+    # When returning from analysis, show inputs at top
+    c1, c2 = st.columns([3, 1])
+    with c1:
+        ticker_input = st.text_input("Ticker(s)", value="AAPL", placeholder="AAPL, MSFT, NVDA", label_visibility="collapsed")
+    with c2:
+        period = st.selectbox("Period", options=["3mo","6mo","1y","2y","5y"], index=2, label_visibility="collapsed")
+    run = st.button("▶  RUN ANALYSIS", use_container_width=True, type="primary")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════════════════════════
-run=st.button("▶ RUN ANALYSIS",use_container_width=True,type="primary")
-if not run:
-    st.markdown('<div class="hdr"><div><div class="tk">STOCK ANALYZER PRO</div><div class="co">Comprehensive Technical & Fundamental Analysis Terminal</div></div></div>',unsafe_allow_html=True)
-    st.info("Enter ticker(s) and click **RUN ANALYSIS**")
 
 if run:
     tickers=[t.strip().upper() for t in ticker_input.split(",") if t.strip()]
