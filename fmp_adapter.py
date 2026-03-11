@@ -1,12 +1,20 @@
 """
-FMP Data Adapter
-=================
-Replaces yfinance with Financial Modeling Prep (FMP) API for reliable
-stock data fetching, especially from cloud environments (Streamlit Cloud).
+Alpha Vantage Data Adapter
+============================
+Replaces yfinance with Alpha Vantage API for reliable stock data fetching
+from cloud environments (Streamlit Cloud).
 
-Uses the NEW stable API base: https://financialmodelingprep.com/stable/
-Free tier: 250 requests/day, 5 years of historical data.
-Sign up at: https://site.financialmodelingprep.com/
+Free tier: 25 requests/day (enough for ~1-2 full stock analyses per day).
+Get your free API key at: https://www.alphavantage.co/support/#api-key
+
+Endpoints used (all free):
+  - TIME_SERIES_DAILY (full history, 20+ years) — 1 call
+  - TIME_SERIES_WEEKLY — 1 call
+  - TIME_SERIES_MONTHLY — 1 call
+  - OVERVIEW (fundamentals) — 1 call
+  - INCOME_STATEMENT — 1 call
+  - BALANCE_SHEET — 1 call
+  Total per stock: ~6-10 calls depending on multi-timeframe needs
 """
 
 import os
@@ -17,323 +25,280 @@ import numpy as np
 from datetime import datetime, timedelta
 
 # ── API Key ──────────────────────────────────────────────────────────────────
-FMP_API_KEY = os.environ.get("FMP_API_KEY", "")
+AV_API_KEY = os.environ.get("AV_API_KEY", "")
 
-_BASE = "https://financialmodelingprep.com/stable"
+_BASE = "https://www.alphavantage.co/query"
 
-def _get(endpoint: str, params: dict = None) -> dict | list | None:
-    """Make a GET request to FMP stable API."""
-    if not FMP_API_KEY:
+def _get(params: dict) -> dict | None:
+    """Make a GET request to Alpha Vantage API."""
+    if not AV_API_KEY:
         raise ValueError(
-            "FMP_API_KEY not set. Get a free key at "
-            "https://site.financialmodelingprep.com/ and add it to "
+            "AV_API_KEY not set. Get a free key at "
+            "https://www.alphavantage.co/support/#api-key and add it to "
             "Streamlit secrets or environment variables."
         )
-    params = params or {}
-    params["apikey"] = FMP_API_KEY
-    url = f"{_BASE}/{endpoint.lstrip('/')}"
-    resp = requests.get(url, params=params, timeout=30)
-    # Handle plan-restricted endpoints gracefully
-    if resp.status_code in (402, 403):
-        print(f"  [FMP] Endpoint restricted (HTTP {resp.status_code}): {endpoint}")
-        return None
+    params["apikey"] = AV_API_KEY
+    resp = requests.get(_BASE, params=params, timeout=30)
     resp.raise_for_status()
     data = resp.json()
-    if isinstance(data, dict) and "Error Message" in data:
-        print(f"  [FMP] API error: {data['Error Message']}")
+
+    if "Error Message" in data:
+        print(f"  [AV] Error: {data['Error Message']}")
+        return None
+    if "Note" in data:
+        print(f"  [AV] Rate limit: {data['Note']}")
+        return None
+    if "Information" in data:
+        print(f"  [AV] Info: {data['Information']}")
         return None
     return data
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Historical Price Data → pandas DataFrame (same format as yfinance)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def _period_to_dates(period: str) -> tuple:
-    """Convert yfinance-style period string to (from_date, to_date)."""
-    today = datetime.now()
+def _period_to_days(period: str) -> int:
     mapping = {
         "1mo": 30, "3mo": 90, "6mo": 180,
         "1y": 365, "2y": 730, "5y": 1825, "10y": 3650,
     }
-    days = mapping.get(period, 365)
-    from_date = (today - timedelta(days=days)).strftime("%Y-%m-%d")
-    to_date = today.strftime("%Y-%m-%d")
-    return from_date, to_date
+    return mapping.get(period, 365)
+
+
+def _parse_daily_data(data: dict, period: str = "1y") -> pd.DataFrame:
+    ts_key = "Time Series (Daily)"
+    if ts_key not in data:
+        return pd.DataFrame()
+    ts = data[ts_key]
+    rows = []
+    for date_str, vals in ts.items():
+        rows.append({
+            "Date": date_str,
+            "Open": float(vals["1. open"]),
+            "High": float(vals["2. high"]),
+            "Low": float(vals["3. low"]),
+            "Close": float(vals["4. close"]),
+            "Volume": int(vals["5. volume"]),
+        })
+    df = pd.DataFrame(rows)
+    df["Date"] = pd.to_datetime(df["Date"])
+    df = df.sort_values("Date").set_index("Date")
+    cutoff = datetime.now() - timedelta(days=_period_to_days(period))
+    df = df[df.index >= cutoff]
+    return df
 
 
 def fetch_historical(ticker: str, period: str = "1y") -> pd.DataFrame:
-    """
-    Fetch daily OHLCV data from FMP stable API.
-    Returns DataFrame with DatetimeIndex and columns: Open, High, Low, Close, Volume.
-    """
-    from_date, to_date = _period_to_dates(period)
-
-    # New stable endpoint
-    data = _get("historical-price-eod/full", {
+    days = _period_to_days(period)
+    outputsize = "full" if days > 100 else "compact"
+    data = _get({
+        "function": "TIME_SERIES_DAILY",
         "symbol": ticker,
-        "from": from_date,
-        "to": to_date,
+        "outputsize": outputsize,
     })
-
-    # Handle both response formats (list or dict with "historical" key)
     if data is None:
-        raise ValueError(f"No historical data for '{ticker}' (endpoint restricted or no data)")
-
-    if isinstance(data, list):
-        hist = data
-    elif isinstance(data, dict) and "historical" in data:
-        hist = data["historical"]
-    else:
-        raise ValueError(f"Unexpected response format for '{ticker}': {type(data)}")
-
-    if not hist:
+        raise ValueError(f"No data returned for '{ticker}' — check ticker or API limit")
+    df = _parse_daily_data(data, period)
+    if df.empty:
         raise ValueError(f"No historical data for '{ticker}'")
+    return df
 
-    df = pd.DataFrame(hist)
-    df["date"] = pd.to_datetime(df["date"])
-    df = df.sort_values("date").set_index("date")
-    df = df.rename(columns={
-        "open": "Open",
-        "high": "High",
-        "low": "Low",
-        "close": "Close",
-        "volume": "Volume",
-    })
-    # Keep only the standard columns
-    for col in ["Open", "High", "Low", "Close", "Volume"]:
-        if col not in df.columns:
-            df[col] = np.nan
-    df = df[["Open", "High", "Low", "Close", "Volume"]]
-    df.index.name = "Date"
+
+def _parse_weekly_monthly(data: dict, ts_key: str, period: str) -> pd.DataFrame:
+    if ts_key not in data:
+        return pd.DataFrame()
+    ts = data[ts_key]
+    rows = []
+    for date_str, vals in ts.items():
+        rows.append({
+            "Date": date_str,
+            "Open": float(vals["1. open"]),
+            "High": float(vals["2. high"]),
+            "Low": float(vals["3. low"]),
+            "Close": float(vals["4. close"]),
+            "Volume": int(vals["5. volume"]),
+        })
+    df = pd.DataFrame(rows)
+    df["Date"] = pd.to_datetime(df["Date"])
+    df = df.sort_values("Date").set_index("Date")
+    cutoff = datetime.now() - timedelta(days=_period_to_days(period))
+    df = df[df.index >= cutoff]
     return df
 
 
 def fetch_historical_interval(ticker: str, period: str, interval: str) -> pd.DataFrame:
-    """
-    Fetch data for different intervals (weekly, monthly).
-    FMP free tier: fetch daily and resample.
-    """
-    df = fetch_historical(ticker, period)
-    if df.empty:
-        return df
-
+    time.sleep(1)
     if interval in ("1wk", "weekly"):
-        df = df.resample("W").agg({
-            "Open": "first", "High": "max", "Low": "min",
-            "Close": "last", "Volume": "sum",
-        }).dropna()
+        data = _get({"function": "TIME_SERIES_WEEKLY", "symbol": ticker})
+        if data is None:
+            return pd.DataFrame()
+        return _parse_weekly_monthly(data, "Weekly Time Series", period)
     elif interval in ("1mo", "monthly"):
-        df = df.resample("ME").agg({
-            "Open": "first", "High": "max", "Low": "min",
-            "Close": "last", "Volume": "sum",
-        }).dropna()
-    return df
+        data = _get({"function": "TIME_SERIES_MONTHLY", "symbol": ticker})
+        if data is None:
+            return pd.DataFrame()
+        return _parse_weekly_monthly(data, "Monthly Time Series", period)
+    else:
+        return fetch_historical(ticker, period)
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-#  Company Info → dict (mapped to yfinance .info keys)
-# ─────────────────────────────────────────────────────────────────────────────
 
 def fetch_info(ticker: str) -> dict:
-    """
-    Fetch company profile + key metrics + ratios + analyst targets from FMP.
-    Returns a dict with the same keys as yfinance's Ticker.info.
-    Gracefully handles restricted endpoints on the free plan.
-    """
     info = {}
 
-    # ── Company Profile ──
+    # ── Company Overview ──
     try:
-        profile_data = _get("profile", {"symbol": ticker})
-        if profile_data and len(profile_data) > 0:
-            p = profile_data[0]
-            info.update({
-                "longName": p.get("companyName"),
-                "shortName": p.get("companyName"),
-                "sector": p.get("sector"),
-                "industry": p.get("industry"),
-                "marketCap": p.get("mktCap"),
-                "beta": p.get("beta"),
-                "price": p.get("price"),
-                "exchange": p.get("exchangeShortName"),
-                "currency": p.get("currency"),
-                "description": p.get("description"),
-                "fullTimeEmployees": p.get("fullTimeEmployees"),
-                "website": p.get("website"),
-                "averageVolume": p.get("volAvg"),
-                "fiftyTwoWeekHigh": p.get("range", "").split("-")[-1].strip() if p.get("range") else None,
-                "fiftyTwoWeekLow": p.get("range", "").split("-")[0].strip() if p.get("range") else None,
-                "dcfValue": p.get("dcf"),
-            })
-            for k in ("fiftyTwoWeekHigh", "fiftyTwoWeekLow"):
+        time.sleep(1)
+        ov = _get({"function": "OVERVIEW", "symbol": ticker})
+        if ov:
+            def _f(key, fallback=None):
+                val = ov.get(key)
+                if val is None or val == "None" or val == "-" or val == "":
+                    return fallback
                 try:
-                    info[k] = float(info[k]) if info[k] else None
+                    return float(val)
                 except (ValueError, TypeError):
-                    info[k] = None
-    except Exception as e:
-        print(f"  [FMP] Profile fetch failed: {e}")
+                    return fallback
 
-    # ── Key Metrics (TTM) ──
-    try:
-        time.sleep(0.3)
-        metrics = _get("key-metrics-ttm", {"symbol": ticker})
-        if metrics and len(metrics) > 0:
-            m = metrics[0]
+            def _s(key, fallback="N/A"):
+                val = ov.get(key)
+                return val if val and val != "None" and val != "-" else fallback
+
             info.update({
-                "trailingPE": m.get("peRatioTTM"),
-                "priceToSalesTrailing12Months": m.get("priceToSalesRatioTTM"),
-                "priceToBook": m.get("pbRatioTTM"),
-                "enterpriseToEbitda": m.get("enterpriseValueOverEBITDATTM"),
-                "dividendYield": m.get("dividendYieldTTM"),
-                "pegRatio": m.get("pegRatioTTM"),
-                "currentRatio": m.get("currentRatioTTM"),
-                "debtToEquity": (m.get("debtToEquityTTM") or 0) * 100 if m.get("debtToEquityTTM") else None,
-                "returnOnEquity": m.get("roeTTM"),
-                "returnOnAssets": m.get("roaTTM"),
-                "freeCashflow": m.get("freeCashFlowPerShareTTM"),
+                "longName": _s("Name"),
+                "shortName": _s("Name"),
+                "sector": _s("Sector"),
+                "industry": _s("Industry"),
+                "marketCap": _f("MarketCapitalization"),
+                "beta": _f("Beta"),
+                "trailingPE": _f("TrailingPE"),
+                "forwardPE": _f("ForwardPE"),
+                "pegRatio": _f("PEGRatio"),
+                "priceToSalesTrailing12Months": _f("PriceToSalesRatioTTM"),
+                "priceToBook": _f("PriceToBookRatio"),
+                "enterpriseToEbitda": _f("EVToEBITDA"),
+                "totalRevenue": _f("RevenueTTM"),
+                "revenueGrowth": _f("QuarterlyRevenueGrowthYOY"),
+                "profitMargins": _f("ProfitMargin"),
+                "operatingMargins": _f("OperatingMarginTTM"),
+                "returnOnEquity": _f("ReturnOnEquityTTM"),
+                "returnOnAssets": _f("ReturnOnAssetsTTM"),
+                "dividendYield": _f("DividendYield"),
+                "fiftyTwoWeekHigh": _f("52WeekHigh"),
+                "fiftyTwoWeekLow": _f("52WeekLow"),
+                "targetMeanPrice": _f("AnalystTargetPrice"),
+                "averageVolume": _f("SharesOutstanding"),
+                "description": _s("Description"),
+                "exchange": _s("Exchange"),
+                "currency": _s("Currency"),
             })
-    except Exception as e:
-        print(f"  [FMP] Key metrics fetch failed: {e}")
 
-    # ── Ratios (TTM) ──
-    try:
-        time.sleep(0.3)
-        ratios = _get("ratios-ttm", {"symbol": ticker})
-        if ratios and len(ratios) > 0:
-            r = ratios[0]
-            info.update({
-                "profitMargins": r.get("netProfitMarginTTM"),
-                "operatingMargins": r.get("operatingProfitMarginTTM"),
-            })
-            if not info.get("forwardPE"):
-                info["forwardPE"] = r.get("priceEarningsToGrowthRatioTTM")
-    except Exception as e:
-        print(f"  [FMP] Ratios fetch failed: {e}")
-
-    # ── Income Statement for revenue ──
-    try:
-        time.sleep(0.3)
-        income = _get("income-statement", {"symbol": ticker, "period": "annual", "limit": 2})
-        if income and len(income) > 0:
-            latest = income[0]
-            info["totalRevenue"] = latest.get("revenue")
-            info["interestIncome"] = latest.get("interestIncome")
-            info["interestExpense"] = latest.get("interestExpense")
-            if len(income) >= 2 and income[1].get("revenue") and income[1]["revenue"] > 0:
-                info["revenueGrowth"] = (
-                    (income[0]["revenue"] - income[1]["revenue"]) / income[1]["revenue"]
-                )
-    except Exception as e:
-        print(f"  [FMP] Income statement fetch failed: {e}")
-
-    # ── Balance Sheet for halal screening ──
-    try:
-        time.sleep(0.3)
-        bs = _get("balance-sheet-statement", {"symbol": ticker, "period": "annual", "limit": 1})
-        if bs and len(bs) > 0:
-            b = bs[0]
-            info["totalDebt"] = b.get("totalDebt")
-            info["totalCash"] = b.get("cashAndCashEquivalents")
-    except Exception as e:
-        print(f"  [FMP] Balance sheet fetch failed: {e}")
-
-    # ── Analyst Price Targets ──
-    try:
-        time.sleep(0.3)
-        targets = _get("price-target-consensus", {"symbol": ticker})
-        if targets and len(targets) > 0:
-            t = targets[0]
-            info["targetMeanPrice"] = t.get("targetConsensus")
-            info["targetHighPrice"] = t.get("targetHigh")
-            info["targetLowPrice"] = t.get("targetLow")
-    except Exception as e:
-        print(f"  [FMP] Price targets fetch failed: {e}")
-
-    # ── Analyst Recommendations ──
-    try:
-        time.sleep(0.3)
-        recs = _get("analyst-stock-recommendations", {"symbol": ticker})
-        if recs and len(recs) > 0:
-            info["numberOfAnalystOpinions"] = len(recs)
-            buy_count = sum(1 for r in recs[:20] if r.get("recommendationKey", "").lower() in ("buy", "strong_buy", "strong buy"))
-            hold_count = sum(1 for r in recs[:20] if r.get("recommendationKey", "").lower() in ("hold", "neutral"))
-            sell_count = sum(1 for r in recs[:20] if r.get("recommendationKey", "").lower() in ("sell", "strong_sell", "strong sell", "underperform"))
-            total = buy_count + hold_count + sell_count
-            if total > 0:
-                if buy_count / total > 0.5:
-                    info["recommendationKey"] = "buy"
-                elif sell_count / total > 0.3:
-                    info["recommendationKey"] = "sell"
-                else:
-                    info["recommendationKey"] = "hold"
+            rec = _s("AnalystRatingStrongBuy", None)
+            if rec is not None:
+                sb = int(_f("AnalystRatingStrongBuy", 0) or 0)
+                b = int(_f("AnalystRatingBuy", 0) or 0)
+                h = int(_f("AnalystRatingHold", 0) or 0)
+                s = int(_f("AnalystRatingSell", 0) or 0)
+                ss = int(_f("AnalystRatingStrongSell", 0) or 0)
+                total = sb + b + h + s + ss
+                info["numberOfAnalystOpinions"] = total
                 info["_analyst_breakdown"] = {
-                    "strongBuy": sum(1 for r in recs[:20] if "strong" in r.get("recommendationKey", "").lower() and "buy" in r.get("recommendationKey", "").lower()),
-                    "buy": buy_count,
-                    "hold": hold_count,
-                    "sell": sell_count,
+                    "strongBuy": sb, "buy": b, "hold": h,
+                    "sell": s, "strongSell": ss, "total": total,
                 }
+                if total > 0:
+                    buy_pct = (sb + b) / total
+                    sell_pct = (s + ss) / total
+                    if buy_pct >= 0.6:
+                        info["recommendationKey"] = "strong_buy" if sb > b else "buy"
+                    elif sell_pct >= 0.6:
+                        info["recommendationKey"] = "strong_sell" if ss > s else "sell"
+                    elif buy_pct > sell_pct:
+                        info["recommendationKey"] = "buy"
+                    elif sell_pct > buy_pct:
+                        info["recommendationKey"] = "sell"
+                    else:
+                        info["recommendationKey"] = "hold"
     except Exception as e:
-        print(f"  [FMP] Recommendations fetch failed: {e}")
+        print(f"  [AV] Overview fetch failed: {e}")
 
-    # ── FMP Rating ──
+    # ── Balance Sheet ──
     try:
-        time.sleep(0.3)
-        rating = _get("rating", {"symbol": ticker})
-        if rating and len(rating) > 0:
-            r = rating[0]
-            fmp_rating = r.get("ratingRecommendation", "").lower()
-            if not info.get("recommendationKey") and fmp_rating:
-                if "buy" in fmp_rating:
-                    info["recommendationKey"] = "buy"
-                elif "sell" in fmp_rating:
-                    info["recommendationKey"] = "sell"
-                else:
-                    info["recommendationKey"] = "hold"
+        time.sleep(1)
+        bs = _get({"function": "BALANCE_SHEET", "symbol": ticker})
+        if bs and "annualReports" in bs and len(bs["annualReports"]) > 0:
+            b = bs["annualReports"][0]
+            def _bf(key):
+                val = b.get(key)
+                if val and val != "None":
+                    try:
+                        return float(val)
+                    except (ValueError, TypeError):
+                        pass
+                return None
+            info["totalDebt"] = _bf("shortLongTermDebtTotal") or _bf("longTermDebt")
+            info["totalCash"] = _bf("cashAndCashEquivalentsAtCarryingValue") or _bf("cash")
+            ca = _bf("totalCurrentAssets")
+            cl = _bf("totalCurrentLiabilities")
+            if ca and cl and cl > 0:
+                info["currentRatio"] = ca / cl
+            te = _bf("totalShareholderEquity")
+            td = info.get("totalDebt")
+            if td and te and te > 0:
+                info["debtToEquity"] = (td / te) * 100
     except Exception as e:
-        print(f"  [FMP] Rating fetch failed: {e}")
+        print(f"  [AV] Balance sheet fetch failed: {e}")
+
+    # ── Income Statement ──
+    try:
+        time.sleep(1)
+        inc = _get({"function": "INCOME_STATEMENT", "symbol": ticker})
+        if inc and "annualReports" in inc and len(inc["annualReports"]) > 0:
+            latest = inc["annualReports"][0]
+            def _if(key):
+                val = latest.get(key)
+                if val and val != "None":
+                    try:
+                        return float(val)
+                    except (ValueError, TypeError):
+                        pass
+                return None
+            info["interestIncome"] = _if("interestIncome")
+            info["interestExpense"] = _if("interestExpense")
+            rev = _if("totalRevenue")
+            if rev:
+                info["totalRevenue"] = rev
+            fcf = _if("operatingIncome")
+            if fcf:
+                info["freeCashflow"] = fcf
+    except Exception as e:
+        print(f"  [AV] Income statement fetch failed: {e}")
 
     return info
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  Combined fetch (replaces yfinance's fetch_data)
-# ─────────────────────────────────────────────────────────────────────────────
-
 def fetch_data(ticker: str, period: str = "6mo") -> tuple:
-    """
-    Drop-in replacement for the yfinance-based fetch_data().
-    Returns (df, info) — same as the original.
-    """
-    print(f"  [FMP] Fetching historical data for {ticker} ({period})...")
+    print(f"  [AV] Fetching historical data for {ticker} ({period})...")
     df = fetch_historical(ticker, period)
-
-    print(f"  [FMP] Fetching company info for {ticker}...")
+    print(f"  [AV] Fetching company info for {ticker}...")
     info = fetch_info(ticker)
-
     return df, info
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-#  "Stock" object mimic (for functions that call stock.history())
-# ─────────────────────────────────────────────────────────────────────────────
-
 class FMPStock:
     """
-    Mimics yf.Ticker interface for functions that call stock.history()
-    (like analyze_multi_timeframe_trend and compute_multi_timeframe_evaluation).
+    Mimics yf.Ticker interface. Named FMPStock for backward compatibility
+    with stock_analyzer.py imports. Uses Alpha Vantage under the hood.
     """
     def __init__(self, ticker: str):
         self.ticker = ticker
 
     def history(self, period="1y", interval="1d", auto_adjust=True, **kwargs):
-        """Fetch history, resampling for weekly/monthly as needed."""
-        if interval in ("1wk",):
-            return fetch_historical_interval(self.ticker, period, "1wk")
-        elif interval in ("1mo",):
-            return fetch_historical_interval(self.ticker, period, "1mo")
-        elif interval in ("5m", "15m", "30m", "60m"):
-            # FMP free tier doesn't support intraday — return empty
+        try:
+            if interval in ("1wk",):
+                return fetch_historical_interval(self.ticker, period, "1wk")
+            elif interval in ("1mo",):
+                return fetch_historical_interval(self.ticker, period, "1mo")
+            elif interval in ("5m", "15m", "30m", "60m"):
+                return pd.DataFrame()
+            else:
+                return fetch_historical(self.ticker, period)
+        except Exception as e:
+            print(f"  [AV] History fetch failed ({interval}): {e}")
             return pd.DataFrame()
-        else:
-            return fetch_historical(self.ticker, period)
