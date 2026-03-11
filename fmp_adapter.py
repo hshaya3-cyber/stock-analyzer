@@ -86,12 +86,11 @@ def _parse_daily_data(data: dict, period: str = "1y") -> pd.DataFrame:
 
 
 def fetch_historical(ticker: str, period: str = "1y") -> pd.DataFrame:
-    days = _period_to_days(period)
-    outputsize = "full" if days > 100 else "compact"
+    # Free tier only supports outputsize=compact (last 100 trading days)
     data = _get({
         "function": "TIME_SERIES_DAILY",
         "symbol": ticker,
-        "outputsize": outputsize,
+        "outputsize": "compact",
     })
     if data is None:
         raise ValueError(f"No data returned for '{ticker}' — check ticker or API limit")
