@@ -1,8 +1,7 @@
 """
-Stock Analyzer Pro — Professional Terminal Report
-===================================================
-Bloomberg/TradingView-inspired dark terminal aesthetic.
-Tabbed layout with all 22 analysis sections preserved.
+Stock Analyzer Pro — Professional Terminal Report v3
+=====================================================
+Bloomberg-inspired. Mobile-first. Tabbed layout.
 """
 import streamlit as st
 import os, sys, io, tempfile, contextlib
@@ -15,86 +14,62 @@ if "AV_API_KEY" in st.secrets:
 
 st.set_page_config(page_title="Stock Analyzer Pro", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# CSS — DARK TERMINAL AESTHETIC
-# ═══════════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=DM+Sans:wght@400;500;600;700&display=swap');
-:root{--bg:#0a0e17;--card:#111827;--card2:#0d1117;--border:#1e293b;--accent:#22c55e;--red:#ef4444;--amber:#f59e0b;--blue:#3b82f6;--t1:#e2e8f0;--t2:#94a3b8;--t3:#64748b;--gdim:rgba(34,197,94,.12);--rdim:rgba(239,68,68,.12);--adim:rgba(245,158,11,.12);--bdim:rgba(59,130,246,.12)}
+:root{--bg:#0a0e17;--card:#111827;--border:#1e293b;--accent:#22c55e;--red:#ef4444;--amber:#f59e0b;--blue:#3b82f6;--t1:#e2e8f0;--t2:#94a3b8;--t3:#64748b;--gdim:rgba(34,197,94,.12);--rdim:rgba(239,68,68,.12);--adim:rgba(245,158,11,.12);--bdim:rgba(59,130,246,.12)}
 .stApp{background:var(--bg)}
-
-/* Hide sidebar completely */
 section[data-testid="stSidebar"]{display:none}
 button[kind="header"]{display:none}
 [data-testid="collapsedControl"]{display:none}
 
-/* Mobile responsive */
-@media(max-width:768px){
-    .hdr{padding:.8rem 1rem;flex-direction:column;align-items:flex-start;gap:.5rem}
-    .hdr .tk{font-size:1.2rem}
-    .hdr .pr{margin-left:0;font-size:1.1rem}
-    .dc{padding:.5rem .6rem}
-    .dc .v{font-size:.85rem}
-    .stTabs [data-baseweb="tab"]{padding:.5rem .6rem;font-size:.6rem}
-    .mr{font-size:.72rem}
-}
-
-/* Header bar */
 .hdr{background:linear-gradient(135deg,#0f172a,#1e293b);border:1px solid var(--border);border-left:3px solid var(--accent);padding:1rem 1.5rem;border-radius:6px;margin-bottom:.8rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
 .hdr .tk{font-family:'JetBrains Mono',monospace;font-size:1.6rem;font-weight:700;color:var(--t1)}
 .hdr .co{font-family:'DM Sans',sans-serif;color:var(--t3);font-size:.8rem}
 .hdr .pr{font-family:'JetBrains Mono',monospace;font-size:1.4rem;font-weight:600;margin-left:auto}
-.hdr .period-tag{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--accent);background:var(--gdim);border:1px solid var(--accent);padding:.15rem .5rem;border-radius:3px;margin-left:.5rem}
+.hdr .period-tag{font-family:'JetBrains Mono',monospace;font-size:.65rem;color:var(--accent);background:var(--gdim);border:1px solid var(--accent);padding:.15rem .5rem;border-radius:3px}
 
-/* Section headers */
 .sh{font-family:'JetBrains Mono',monospace;font-size:.7rem;font-weight:600;color:var(--accent);letter-spacing:1.5px;text-transform:uppercase;padding:.4rem 0;margin:.8rem 0 .5rem;border-bottom:1px solid var(--border)}
-
-/* Cards */
 .dc{background:var(--card);border:1px solid var(--border);border-radius:5px;padding:.6rem .8rem;margin-bottom:.4rem}
 .dc .l{font-family:'JetBrains Mono',monospace;font-size:.6rem;color:var(--t3);text-transform:uppercase;letter-spacing:.8px;margin-bottom:.15rem}
 .dc .v{font-family:'JetBrains Mono',monospace;font-size:1rem;font-weight:600;color:var(--t1)}
 
-/* Signals */
 .sb{padding:.15rem .5rem;border-radius:3px;font-family:'JetBrains Mono',monospace;font-size:.7rem;font-weight:600;display:inline-block}
 .sb-b{background:var(--gdim);color:var(--accent);border:1px solid var(--accent)}
 .sb-s{background:var(--rdim);color:var(--red);border:1px solid var(--red)}
 .sb-n{background:var(--adim);color:var(--amber);border:1px solid var(--amber)}
-.sb-i{background:var(--bdim);color:var(--blue);border:1px solid var(--blue)}
 
-/* Halal */
 .h-pass{background:var(--gdim);color:var(--accent);border:1px solid var(--accent);padding:.2rem .7rem;border-radius:3px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:.8rem}
 .h-fail{background:var(--rdim);color:var(--red);border:1px solid var(--red);padding:.2rem .7rem;border-radius:3px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:.8rem}
 .h-warn{background:var(--adim);color:var(--amber);border:1px solid var(--amber);padding:.2rem .7rem;border-radius:3px;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:.8rem}
 
-/* Metric rows */
 .mr{font-family:'JetBrains Mono',monospace;display:flex;justify-content:space-between;padding:.3rem 0;border-bottom:1px solid rgba(30,41,59,.4);font-size:.78rem}
 .mr .ml{color:var(--t2)}.mr .mv{color:var(--t1);font-weight:500}
 
-/* Tabs */
 .stTabs [data-baseweb="tab-list"]{gap:0;border-bottom:1px solid var(--border)}
 .stTabs [data-baseweb="tab"]{font-family:'JetBrains Mono',monospace;font-size:.7rem;letter-spacing:.5px;text-transform:uppercase;padding:.6rem 1rem;color:var(--t3);border-bottom:2px solid transparent}
 .stTabs [aria-selected="true"]{color:var(--accent)!important;border-bottom-color:var(--accent)!important}
-
-/* Dataframes */
 .stDataFrame{font-family:'JetBrains Mono',monospace;font-size:.75rem}
+
+@media(max-width:768px){
+    .hdr{padding:.8rem;flex-direction:column;align-items:flex-start;gap:.4rem}
+    .hdr .tk{font-size:1.1rem}.hdr .pr{margin-left:0;font-size:1rem}
+    .dc{padding:.4rem .5rem}.dc .v{font-size:.8rem}.dc .l{font-size:.55rem}
+    .stTabs [data-baseweb="tab"]{padding:.4rem .5rem;font-size:.55rem}
+    .mr{font-size:.68rem}
+}
 </style>
 """, unsafe_allow_html=True)
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# HELPERS
-# ═══════════════════════════════════════════════════════════════════════════════
-def sh(t): st.markdown(f'<div class="sh">{t}</div>', unsafe_allow_html=True)
-def dc(l,v): st.markdown(f'<div class="dc"><div class="l">{l}</div><div class="v">{v}</div></div>', unsafe_allow_html=True)
-
+# ═══ HELPERS ═══
+def sh(t): st.markdown(f'<div class="sh">{t}</div>',unsafe_allow_html=True)
+def dc(l,v): st.markdown(f'<div class="dc"><div class="l">{l}</div><div class="v">{v}</div></div>',unsafe_allow_html=True)
 def sg(t):
     t=str(t).upper()
-    if any(w in t for w in ["BUY","BULLISH","UPTREND","PASS","HALAL","STRONG BUY","STRONG BULLISH"]): return f'<span class="sb sb-b">{t}</span>'
+    if any(w in t for w in ["BUY","BULLISH","UPTREND","PASS","HALAL","STRONG BUY"]): return f'<span class="sb sb-b">{t}</span>'
     elif any(w in t for w in ["SELL","BEARISH","DOWNTREND","FAIL","NON-COMPLIANT"]): return f'<span class="sb sb-s">{t}</span>'
     return f'<span class="sb sb-n">{t}</span>'
-
-def mr(l,v): st.markdown(f'<div class="mr"><span class="ml">{l}</span><span class="mv">{v}</span></div>', unsafe_allow_html=True)
-
+def mr(l,v): st.markdown(f'<div class="mr"><span class="ml">{l}</span><span class="mv">{v}</span></div>',unsafe_allow_html=True)
 def fmt(v,p="",s="",d=2):
     if v is None or v=="N/A": return "N/A"
     try:
@@ -105,79 +80,44 @@ def fmt(v,p="",s="",d=2):
         if abs(f)>=1e6: return f"{p}{f/1e6:.{d}f}M{s}"
         return f"{p}{f:,.{d}f}{s}"
     except: return str(v)
-
 def fp(v):
     if v is None or v=="N/A": return "N/A"
     try:
         f=float(v)
         return f"{f*100:.2f}%" if abs(f)<1 else f"{f:.2f}%"
     except: return str(v)
-
 def sf(d,k,fb=0):
     v=d.get(k,fb)
     if v is None or (isinstance(v,float) and np.isnan(v)): return fb
     return v
-
 def lvl(name,val,cur):
     if val is None or (isinstance(val,float) and np.isnan(val)): return "N/A"
     pct=((cur-val)/val)*100 if val!=0 else 0
     pos="Above" if cur>val else "Below"
     return f"${val:,.2f} — {pos} ({pct:+.2f}%)"
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# INPUTS — Main page (mobile-friendly, no sidebar)
-# ═══════════════════════════════════════════════════════════════════════════════
-if 'analysis_running' not in st.session_state:
-    st.session_state.analysis_running = False
-
-# Landing / Input section
-if not st.session_state.analysis_running:
-    st.markdown('''<div class="hdr">
-        <div><div class="tk">STOCK ANALYZER PRO</div>
-        <div class="co">Comprehensive Technical & Fundamental Analysis Terminal</div></div>
-    </div>''', unsafe_allow_html=True)
-
-    # Input row — compact for mobile
-    c1, c2 = st.columns([3, 1])
-    with c1:
-        ticker_input = st.text_input("Ticker(s)", value="AAPL", placeholder="AAPL, MSFT, NVDA", label_visibility="collapsed")
-    with c2:
-        period = st.selectbox("Period", options=["3mo","6mo","1y","2y","5y"], index=2, label_visibility="collapsed")
-
-    run = st.button("▶  RUN ANALYSIS", use_container_width=True, type="primary")
-
+# ═══ INPUTS (main page, mobile-friendly) ═══
+if 'running' not in st.session_state: st.session_state.running=False
+if not st.session_state.running:
+    st.markdown('''<div class="hdr"><div><div class="tk">STOCK ANALYZER PRO</div><div class="co">Comprehensive Technical & Fundamental Analysis Terminal</div></div></div>''',unsafe_allow_html=True)
+    c1,c2=st.columns([3,1])
+    with c1: ticker_input=st.text_input("Ticker(s)",value="AAPL",placeholder="AAPL, MSFT, NVDA",label_visibility="collapsed")
+    with c2: period=st.selectbox("Period",options=["3mo","6mo","1y","2y","5y"],index=2,label_visibility="collapsed")
+    run=st.button("▶  RUN ANALYSIS",use_container_width=True,type="primary")
     if not run:
-        st.markdown("")
-        # Feature cards
-        f1, f2, f3 = st.columns(3)
-        f1.markdown(f'''<div class="dc" style="text-align:center;padding:1rem">
-            <div class="l">📊 Technical</div>
-            <div style="font-family:'DM Sans',sans-serif;font-size:.8rem;color:var(--t2);margin-top:.3rem">20+ indicators · Patterns · Fibonacci · Ichimoku</div>
-        </div>''', unsafe_allow_html=True)
-        f2.markdown(f'''<div class="dc" style="text-align:center;padding:1rem">
-            <div class="l">🔄 Multi-Timeframe</div>
-            <div style="font-family:'DM Sans',sans-serif;font-size:.8rem;color:var(--t2);margin-top:.3rem">Daily · Weekly · Monthly · 7 intervals</div>
-        </div>''', unsafe_allow_html=True)
-        f3.markdown(f'''<div class="dc" style="text-align:center;padding:1rem">
-            <div class="l">💰 Fundamentals</div>
-            <div style="font-family:'DM Sans',sans-serif;font-size:.8rem;color:var(--t2);margin-top:.3rem">Halal screening · Analyst consensus · Ratios</div>
-        </div>''', unsafe_allow_html=True)
-        st.caption("Enter one or more tickers separated by commas · Select analysis period · Click RUN")
-        st.caption("Stock Analyzer Pro v2.0 · Powered by yfinance via Google Colab")
+        f1,f2,f3=st.columns(3)
+        f1.markdown('<div class="dc" style="text-align:center;padding:1rem"><div class="l">📊 Technical</div><div style="font-family:DM Sans;font-size:.8rem;color:var(--t2);margin-top:.3rem">20+ indicators · Patterns · Fibonacci</div></div>',unsafe_allow_html=True)
+        f2.markdown('<div class="dc" style="text-align:center;padding:1rem"><div class="l">🔄 Multi-Timeframe</div><div style="font-family:DM Sans;font-size:.8rem;color:var(--t2);margin-top:.3rem">Daily · Weekly · Monthly · 7 intervals</div></div>',unsafe_allow_html=True)
+        f3.markdown('<div class="dc" style="text-align:center;padding:1rem"><div class="l">💰 Fundamentals</div><div style="font-family:DM Sans;font-size:.8rem;color:var(--t2);margin-top:.3rem">Halal screening · Valuation · Ratios</div></div>',unsafe_allow_html=True)
+        st.caption("Enter tickers · Select period · Click RUN  |  Stock Analyzer Pro v3.0")
         st.stop()
 else:
-    # When returning from analysis, show inputs at top
-    c1, c2 = st.columns([3, 1])
-    with c1:
-        ticker_input = st.text_input("Ticker(s)", value="AAPL", placeholder="AAPL, MSFT, NVDA", label_visibility="collapsed")
-    with c2:
-        period = st.selectbox("Period", options=["3mo","6mo","1y","2y","5y"], index=2, label_visibility="collapsed")
-    run = st.button("▶  RUN ANALYSIS", use_container_width=True, type="primary")
+    c1,c2=st.columns([3,1])
+    with c1: ticker_input=st.text_input("Ticker(s)",value="AAPL",placeholder="AAPL, MSFT",label_visibility="collapsed")
+    with c2: period=st.selectbox("Period",options=["3mo","6mo","1y","2y","5y"],index=2,label_visibility="collapsed")
+    run=st.button("▶  RUN ANALYSIS",use_container_width=True,type="primary")
 
-# ═══════════════════════════════════════════════════════════════════════════════
-# MAIN
-# ═══════════════════════════════════════════════════════════════════════════════
-
+# ═══ MAIN ═══
 if run:
     tickers=[t.strip().upper() for t in ticker_input.split(",") if t.strip()]
     if not tickers: st.error("Enter a ticker."); st.stop()
@@ -207,41 +147,46 @@ if run:
             chg_c="var(--accent)" if pct_chg>=0 else "var(--red)"
             h_status=halal.get('status','?')
             rating=str(info.get('recommendationKey','N/A')).replace('_',' ').title()
+            tp=info.get('targetMeanPrice')
+            try: ups=f"{((float(tp)-cur)/cur)*100:+.1f}%"
+            except: ups="N/A"
 
-            # ═══ HEADER ═══
+            # ═══ HEADER — Ticker + Price ═══
             st.markdown(f'''<div class="hdr">
                 <div><div class="tk">{ticker} <span style="font-size:.85rem;color:var(--t3);font-weight:400">{company}</span></div>
                 <div class="co">{sector}{" · " if sector and industry else ""}{industry}</div></div>
                 <div class="pr" style="color:{chg_c}">${cur:,.2f} ({pct_chg:+.2f}%)</div>
-                <span class="period-tag">Period: {period.upper()}</span>
+                <span class="period-tag">{period.upper()}</span>
             </div>''',unsafe_allow_html=True)
 
-            # Quick stats
-            q1,q2,q3,q4,q5,q6=st.columns(6)
+            # ═══ QUICK STATS ROW — Signal, Score, Analyst info, Halal ═══
+            q1,q2,q3,q4,q5,q6,q7=st.columns(7)
             q1.markdown(f'<div class="dc"><div class="l">Signal</div><div class="v">{sg(overall)}</div></div>',unsafe_allow_html=True)
             q2.markdown(f'<div class="dc"><div class="l">Score</div><div class="v">{signals.get("total_score",0)}</div></div>',unsafe_allow_html=True)
-            q3.markdown(f'<div class="dc"><div class="l">RSI (14)</div><div class="v">{sf(L,"RSI"):.1f}</div></div>',unsafe_allow_html=True)
-            q4.markdown(f'<div class="dc"><div class="l">Volume</div><div class="v">{fmt(sf(L,"Volume"))}</div></div>',unsafe_allow_html=True)
-            q5.markdown(f'<div class="dc"><div class="l">Analyst</div><div class="v">{rating}</div></div>',unsafe_allow_html=True)
+            q3.markdown(f'<div class="dc"><div class="l">Rating</div><div class="v">{rating}</div></div>',unsafe_allow_html=True)
+            q4.markdown(f'<div class="dc"><div class="l">Target</div><div class="v">{fmt(tp,p="$")}</div></div>',unsafe_allow_html=True)
+            q5.markdown(f'<div class="dc"><div class="l">Analysts</div><div class="v">{info.get("numberOfAnalystOpinions","N/A")}</div></div>',unsafe_allow_html=True)
+            q6.markdown(f'<div class="dc"><div class="l">Upside</div><div class="v">{ups}</div></div>',unsafe_allow_html=True)
             h_cls="h-pass" if h_status=="HALAL" else "h-fail" if h_status=="NON-COMPLIANT" else "h-warn"
-            q6.markdown(f'<div class="dc"><div class="l">Halal</div><div class="v"><span class="{h_cls}">{h_status}</span></div></div>',unsafe_allow_html=True)
+            q7.markdown(f'<div class="dc"><div class="l">Halal</div><div class="v"><span class="{h_cls}">{h_status}</span></div></div>',unsafe_allow_html=True)
+
+            # Analyst breakdown
+            bd=info.get('_analyst_breakdown')
+            if bd: st.markdown(f"🟢 StrongBuy: **{bd.get('strongBuy',0)}** · Buy: **{bd.get('buy',0)}** · ⚪ Hold: **{bd.get('hold',0)}** · 🔴 Sell: **{bd.get('sell',0)}** · StrongSell: **{bd.get('strongSell',0)}**")
 
             with st.expander("📜 Analysis Log"): st.code(log_buf.getvalue())
 
             # ═══ TABS ═══
-            tab1,tab2,tab3,tab4,tab5=st.tabs(["📊 Overview","⚡ Technical","📐 Patterns & Levels","🔄 Multi-Timeframe","💰 Fundamentals"])
+            tab1,tab2,tab3,tab4,tab5,tab6=st.tabs(["📊 Overview","📈 Charts","⚡ Technical","📐 Patterns & Levels","🔄 Multi-Timeframe","💰 Fundamentals"])
 
             # ═══════════ TAB 1: OVERVIEW ═══════════
             with tab1:
-                for pk in ['chart_path','fib_chart_path','fib_chart_weekly','fib_chart_monthly']:
-                    if R.get(pk) and os.path.exists(R[pk]): st.image(R[pk],use_container_width=True)
-
                 sh("PRICE SUMMARY")
-                p1,p2,p3,p4,p5,p6=st.columns(6)
-                for c,l,v in [(p1,"Close",f"${cur:,.2f}"),(p2,"Volume",fmt(sf(L,'Volume'))),(p3,"RSI (14)",f"{sf(L,'RSI'):.1f}"),(p4,"MACD",f"{sf(L,'MACD'):.4f}"),(p5,"52W High",fmt(info.get('fiftyTwoWeekHigh'),p="$")),(p6,"52W Low",fmt(info.get('fiftyTwoWeekLow'),p="$"))]:
-                    c.markdown(f'<div class="dc"><div class="l">{l}</div><div class="v">{v}</div></div>',unsafe_allow_html=True)
-                avg_vol=sf(L,'Vol_SMA_20',0); vol_r=sf(L,'Volume',0)/avg_vol if avg_vol>0 else 0
-                st.caption(f"Current Vol: {fmt(sf(L,'Volume'))} · Avg Vol (20d): {fmt(avg_vol)} · Ratio: {vol_r:.1f}x · Period: {period}")
+                p1,p2,p3,p4=st.columns(4)
+                p1.markdown(f'<div class="dc"><div class="l">Close</div><div class="v">${cur:,.2f}</div></div>',unsafe_allow_html=True)
+                p2.markdown(f'<div class="dc"><div class="l">Change</div><div class="v" style="color:{chg_c}">{pct_chg:+.2f}%</div></div>',unsafe_allow_html=True)
+                p3.markdown(f'<div class="dc"><div class="l">MACD</div><div class="v">{sf(L,"MACD"):.4f}</div></div>',unsafe_allow_html=True)
+                p4.markdown(f'<div class="dc"><div class="l">Market Cap</div><div class="v">{fmt(info.get("marketCap"),p="$")}</div></div>',unsafe_allow_html=True)
 
                 sh("SIGNAL SUMMARY")
                 ts=signals.get('trend','NEUTRAL');tsc=signals.get('trend_score',0)
@@ -263,31 +208,41 @@ if run:
                 vn=signals.get('volatility',[])
                 if vn: st.markdown("**Volatility:** "+" | ".join(vn))
 
-                sh("ANALYST CONSENSUS")
-                a1,a2,a3,a4=st.columns(4)
-                for c,l,v in [(a1,"Rating",rating),(a2,"Target",fmt(info.get('targetMeanPrice'),p="$")),(a3,"Analysts",str(info.get('numberOfAnalystOpinions','N/A')))]:
-                    c.markdown(f'<div class="dc"><div class="l">{l}</div><div class="v">{v}</div></div>',unsafe_allow_html=True)
-                tp=info.get('targetMeanPrice')
-                try: ups=f"{((float(tp)-cur)/cur)*100:+.1f}%"
-                except: ups="N/A"
-                a4.markdown(f'<div class="dc"><div class="l">Upside</div><div class="v">{ups}</div></div>',unsafe_allow_html=True)
-                bd=info.get('_analyst_breakdown')
-                if bd: st.markdown(f"🟢 StrongBuy: **{bd.get('strongBuy',0)}** · Buy: **{bd.get('buy',0)}** · ⚪ Hold: **{bd.get('hold',0)}** · 🔴 Sell: **{bd.get('sell',0)}** · StrongSell: **{bd.get('strongSell',0)}**")
-
-            # ═══════════ TAB 2: TECHNICAL ═══════════
-            with tab2:
+                # Barchart opinion in overview as summary
                 if bco and bco.get('barchart_opinion'):
-                    sh("BARCHART TECHNICAL OPINION")
+                    sh("TECHNICAL OPINION (Barchart-Style)")
                     bo=bco['barchart_opinion']
                     bcs=[bo['short_term']['signal'],bo['medium_term']['signal'],bo['long_term']['signal']]
                     bcb=sum(1 for s in bcs if 'BUY' in s);bce=sum(1 for s in bcs if 'SELL' in s)
                     bco_ov='BUY' if bcb>bce else 'SELL' if bce>bcb else 'NEUTRAL'
                     st.markdown(f"**Overall:** {sg(bco_ov)}",unsafe_allow_html=True)
                     b1,b2,b3=st.columns(3)
-                    b1.markdown(f"**Short-Term:** {sg(bo['short_term']['signal'])} (Score: {bo['short_term']['score']})",unsafe_allow_html=True)
-                    b2.markdown(f"**Medium-Term:** {sg(bo['medium_term']['signal'])} (Score: {bo['medium_term']['score']})",unsafe_allow_html=True)
-                    b3.markdown(f"**Long-Term:** {sg(bo['long_term']['signal'])} (Score: {bo['long_term']['score']})",unsafe_allow_html=True)
+                    b1.markdown(f"**Short:** {sg(bo['short_term']['signal'])} ({bo['short_term']['score']})",unsafe_allow_html=True)
+                    b2.markdown(f"**Medium:** {sg(bo['medium_term']['signal'])} ({bo['medium_term']['score']})",unsafe_allow_html=True)
+                    b3.markdown(f"**Long:** {sg(bo['long_term']['signal'])} ({bo['long_term']['score']})",unsafe_allow_html=True)
 
+                # Quick Halal summary
+                sh("HALAL STATUS")
+                hc2="h-pass" if h_status=="HALAL" else "h-fail" if h_status=="NON-COMPLIANT" else "h-warn"
+                st.markdown(f'<span class="{hc2}">{h_status}</span> &nbsp; ({halal.get("pass_count",0)}/{halal.get("total_checks",4)} criteria)',unsafe_allow_html=True)
+                for d in halal.get('details',[]):
+                    ic="✅" if d['status']=='PASS' else "❌" if d['status']=='FAIL' else "⚠️"
+                    st.markdown(f"{ic} **{d['criterion']}** — {d['status']} — {d['value']}")
+                    if d.get('note'): st.caption(d['note'])
+
+            # ═══════════ TAB 2: CHARTS ═══════════
+            with tab2:
+                has_charts=False
+                for pk,label in [('chart_path','Main Technical Chart'),('fib_chart_path','Fibonacci (Daily)'),('fib_chart_weekly','Fibonacci (Weekly)'),('fib_chart_monthly','Fibonacci (Monthly)')]:
+                    if R.get(pk) and os.path.exists(R[pk]):
+                        sh(label.upper())
+                        st.image(R[pk],use_container_width=True)
+                        has_charts=True
+                if not has_charts:
+                    st.info("No charts available.")
+
+            # ═══════════ TAB 3: TECHNICAL ═══════════
+            with tab3:
                 sh("KEY TECHNICAL LEVELS")
                 k1,k2=st.columns(2)
                 with k1:
@@ -310,6 +265,17 @@ if run:
                 for c,l,v in [(m5,"ADX",f"{sf(L,'ADX'):.1f}"),(m6,"+DI / -DI",f"{sf(L,'DI_Plus'):.1f} / {sf(L,'DI_Minus'):.1f}"),(m7,"ATR (14)",f"${sf(L,'ATR'):.2f} {atr_p}"),(m8,"MACD",f"{sf(L,'MACD'):.4f}")]:
                     c.markdown(f'<div class="dc"><div class="l">{l}</div><div class="v">{v}</div></div>',unsafe_allow_html=True)
 
+                sh("VOLUME & PRICE DATA")
+                avg_vol=sf(L,'Vol_SMA_20',0); vol_r=sf(L,'Volume',0)/avg_vol if avg_vol>0 else 0
+                v1,v2,v3,v4=st.columns(4)
+                v1.markdown(f'<div class="dc"><div class="l">Volume</div><div class="v">{fmt(sf(L,"Volume"))}</div></div>',unsafe_allow_html=True)
+                v2.markdown(f'<div class="dc"><div class="l">Avg Vol (20d)</div><div class="v">{fmt(avg_vol)}</div></div>',unsafe_allow_html=True)
+                v3.markdown(f'<div class="dc"><div class="l">Relative Vol</div><div class="v">{vol_r:.2f}x</div></div>',unsafe_allow_html=True)
+                v4.markdown(f'<div class="dc"><div class="l">Beta</div><div class="v">{fmt(info.get("beta"),d=2)}</div></div>',unsafe_allow_html=True)
+                w1,w2=st.columns(2)
+                w1.markdown(f'<div class="dc"><div class="l">52W High</div><div class="v">{fmt(info.get("fiftyTwoWeekHigh"),p="$")} ({((cur-float(info.get("fiftyTwoWeekHigh",cur)))/float(info.get("fiftyTwoWeekHigh",cur))*100):+.1f}%)</div></div>' if info.get("fiftyTwoWeekHigh") else '<div class="dc"><div class="l">52W High</div><div class="v">N/A</div></div>',unsafe_allow_html=True)
+                w2.markdown(f'<div class="dc"><div class="l">52W Low</div><div class="v">{fmt(info.get("fiftyTwoWeekLow"),p="$")} ({((cur-float(info.get("fiftyTwoWeekLow",cur)))/float(info.get("fiftyTwoWeekLow",cur))*100):+.1f}%)</div></div>' if info.get("fiftyTwoWeekLow") else '<div class="dc"><div class="l">52W Low</div><div class="v">N/A</div></div>',unsafe_allow_html=True)
+
                 sh("KELTNER / BOLLINGER / SQUEEZE")
                 sq="🔴 SQUEEZE ACTIVE — Expect breakout" if L.get('Squeeze') else "🟢 No Squeeze"
                 st.markdown(f"**Squeeze:** {sq}")
@@ -327,16 +293,15 @@ if run:
                 elif abs(rv-mv)>20: mfr="DIVERGENCE"
                 else: mfr="NEUTRAL"
                 mr("MFI/RSI",f"{mfr} (RSI={rv:.1f}, MFI={mv:.1f})")
-                obv=sf(L,'OBV',0)
-                mr("OBV",fmt(obv))
+                obv=sf(L,'OBV',0); mr("OBV",fmt(obv))
                 if len(df)>=20 and 'OBV' in df.columns:
                     mr("OBV Trend (5d)","Rising" if obv>df['OBV'].iloc[-5] else "Falling")
                     mr("OBV Trend (20d)","Rising" if obv>df['OBV'].iloc[-20] else "Falling")
-                    price_trend='up' if cur>df['Close'].iloc[-21] else 'down'
-                    obv_long="Rising" if obv>df['OBV'].iloc[-20] else "Falling"
-                    if price_trend=='up' and obv_long=='Falling': mr("OBV/Price","⚠️ DIVERGENCE — Price up but OBV falling")
-                    elif price_trend=='down' and obv_long=='Rising': mr("OBV/Price","⚠️ DIVERGENCE — Price down but OBV rising")
-                    elif price_trend=='up' and obv_long=='Rising': mr("OBV/Price","✅ CONFIRMED — Both rising")
+                    pt='up' if cur>df['Close'].iloc[-21] else 'down'
+                    ol="Rising" if obv>df['OBV'].iloc[-20] else "Falling"
+                    if pt=='up' and ol=='Falling': mr("OBV/Price","⚠️ DIVERGENCE — Price up, OBV falling")
+                    elif pt=='down' and ol=='Rising': mr("OBV/Price","⚠️ DIVERGENCE — Price down, OBV rising")
+                    elif pt=='up' and ol=='Rising': mr("OBV/Price","✅ CONFIRMED — Both rising")
                     else: mr("OBV/Price","✅ CONFIRMED — Both falling")
 
                 sh("ICHIMOKU CLOUD")
@@ -350,20 +315,19 @@ if run:
                     if spB is not None: mr("Senkou Span B",f"${spB:,.2f}")
                 with i2:
                     if spA is not None and spB is not None:
-                        mr("Cloud","GREEN (bullish) ✅" if spA>spB else "RED (bearish) ❌")
+                        mr("Cloud","GREEN ✅" if spA>spB else "RED ❌")
                         if cur>max(spA,spB): mr("Price vs Cloud","ABOVE ↑ Bullish")
                         elif cur<min(spA,spB): mr("Price vs Cloud","BELOW ↓ Bearish")
                         else: mr("Price vs Cloud","INSIDE ↔ Transitioning")
                     if tenkan and kijun:
-                        mr("TK Cross","Tenkan > Kijun ✅" if tenkan>kijun else "Tenkan < Kijun ❌")
+                        mr("TK Cross","Bullish ✅" if tenkan>kijun else "Bearish ❌")
                         isc=sum([tenkan>kijun,cur>tenkan,cur>kijun,spA is not None and spB is not None and cur>max(spA,spB),spA is not None and spB is not None and spA>spB])
                         isig="BULLISH" if isc>=3 else "BEARISH" if isc<=1 else "NEUTRAL"
-                        st.markdown(f"**Ichimoku Signal:** {sg(isig)} ({isc}/5)",unsafe_allow_html=True)
-                if not tenkan and not kijun:
-                    st.info("Ichimoku data not available — insufficient history for calculation.")
+                        st.markdown(f"**Signal:** {sg(isig)} ({isc}/5)",unsafe_allow_html=True)
+                if not tenkan and not kijun: st.info("Ichimoku: Insufficient history for calculation.")
 
-            # ═══════════ TAB 3: PATTERNS & LEVELS ═══════════
-            with tab3:
+            # ═══════════ TAB 4: PATTERNS & LEVELS ═══════════
+            with tab4:
                 sh("SUPPORT & RESISTANCE")
                 sc1,sc2=st.columns(2)
                 with sc1:
@@ -372,19 +336,17 @@ if run:
                     sups=sr.get('supports',[])
                     if sups:
                         for s in sups:
-                            p=s.get('price',0);st_r=s.get('strength',1)
-                            st.markdown(f"🟢 **${p:,.2f}** ({((p-cur)/cur)*100:+.1f}%) [Strength: {st_r}]")
-                    else:
-                        st.caption("No support levels detected")
+                            p=s.get('price',0);sr_s=s.get('strength',1)
+                            st.markdown(f"🟢 **${p:,.2f}** ({((p-cur)/cur)*100:+.1f}%) [Str: {sr_s}]")
+                    else: st.caption("No support levels detected")
                 with sc2:
                     st.markdown("**Resistance Levels**")
                     ress=sr.get('resistances',[])
                     if ress:
                         for r in ress:
-                            p=r.get('price',0);st_r=r.get('strength',1)
-                            st.markdown(f"🔴 **${p:,.2f}** ({((p-cur)/cur)*100:+.1f}%) [Strength: {st_r}]")
-                    else:
-                        st.caption("No resistance levels detected")
+                            p=r.get('price',0);sr_s=r.get('strength',1)
+                            st.markdown(f"🔴 **${p:,.2f}** ({((p-cur)/cur)*100:+.1f}%) [Str: {sr_s}]")
+                    else: st.caption("No resistance levels detected")
 
                 sh("FIBONACCI ANALYSIS")
                 if fib.get('available'):
@@ -402,12 +364,10 @@ if run:
                     if levels:
                         rows=[]
                         for k,v in levels.items():
-                            pct=((v-cur)/cur)*100
-                            marker=" ◄" if abs(pct)<2 else ""
+                            pct=((v-cur)/cur)*100;marker=" ◄" if abs(pct)<2 else ""
                             rows.append({"Level":k,"Price":f"${v:,.2f}","Distance":f"{pct:+.1f}%{marker}"})
                         st.dataframe(pd.DataFrame(rows),hide_index=True,use_container_width=True)
-                else:
-                    st.info(f"Fibonacci: {fib.get('reason','Insufficient data')}")
+                else: st.info(f"Fibonacci: {fib.get('reason','Insufficient data')}")
                 for tf in ['Weekly','Monthly']:
                     tff=mtf_fib.get(tf,{})
                     if tff.get('available'):
@@ -424,8 +384,7 @@ if run:
                         ic="📈" if p.get('direction')=='BULLISH' else "📉" if p.get('direction')=='BEARISH' else "📊"
                         st.markdown(f"{ic} **{p.get('pattern','?')}** — {sg(p.get('direction','N/A'))} — Confidence: {p.get('confidence','N/A')}",unsafe_allow_html=True)
                         if p.get('description'): st.caption(p['description'])
-                else:
-                    st.info("No chart patterns detected.")
+                else: st.info("No chart patterns detected.")
                 if ep:
                     with st.expander("theEccentricTrader Method"):
                         for p in ep: st.markdown(f"**{p.get('pattern','?')}** — {p.get('direction','N/A')}")
@@ -437,21 +396,18 @@ if run:
                     for d in divs:
                         ic="🟢" if d.get('type')=='BULLISH' else "🔴"
                         st.markdown(f"{ic} **{d.get('type','?')} {d.get('indicator','?')}** — {d.get('description','')}")
-                else:
-                    st.info("No divergences detected. RSI, MACD, MFI, and OBV are generally aligned.")
+                else: st.info("No divergences detected.")
 
-            # ═══════════ TAB 4: MULTI-TIMEFRAME ═══════════
-            with tab4:
+            # ═══════════ TAB 5: MULTI-TIMEFRAME ═══════════
+            with tab5:
                 sh("MULTI-TIMEFRAME TREND")
                 for tn in ['Daily','Weekly','Monthly']:
                     tf=mtf_t.get(tn,{})
                     if tf.get('available',False):
                         trend=tf.get('trend','N/A')
                         mapped=trend.replace('UPTREND','BULLISH').replace('DOWNTREND','BEARISH').replace('SIDEWAYS','NEUTRAL')
-                        for w in ['STRONG ']: mapped=mapped.replace(w,w)
                         st.markdown(f"**{tn}:** {sg(mapped)} — {tf.get('detail','')}",unsafe_allow_html=True)
-                    else:
-                        st.markdown(f"**{tn}:** N/A — {tf.get('detail',tf.get('reason',''))}")
+                    else: st.markdown(f"**{tn}:** N/A — {tf.get('detail',tf.get('reason',''))}")
 
                 if mtf_e:
                     sh("TECHNICAL EVALUATION — MULTI-TIMEFRAME")
@@ -460,21 +416,18 @@ if run:
                         ev=mtf_e.get(tl,{})
                         if ev.get('available'):
                             er.append({"TF":tl,"Overall":ev.get('overall_summary','N/A'),"MA":ev.get('ma_summary','N/A'),"Osc":ev.get('osc_summary','N/A'),"Buy":ev.get('total_buy',0),"Neut":ev.get('total_neutral',0),"Sell":ev.get('total_sell',0)})
-                        else:
-                            er.append({"TF":tl,"Overall":"—","MA":"—","Osc":"—","Buy":"—","Neut":"—","Sell":"—"})
+                        else: er.append({"TF":tl,"Overall":"—","MA":"—","Osc":"—","Buy":"—","Neut":"—","Sell":"—"})
                     st.dataframe(pd.DataFrame(er),hide_index=True,use_container_width=True)
 
                 if bco and bco.get('overall_summary'):
                     sh("DAILY DETAIL")
                     st.markdown(f"**Overall:** {sg(bco['overall_summary'])} — Buy: {bco.get('total_buy',0)} / Neutral: {bco.get('total_neutral',0)} / Sell: {bco.get('total_sell',0)}",unsafe_allow_html=True)
-
                     sh("MOVING AVERAGES (Daily)")
                     st.markdown(f"**Summary:** {sg(bco.get('ma_summary','N/A'))} — B:{bco.get('ma_buy',0)} / N:{bco.get('ma_neutral',0)} / S:{bco.get('ma_sell',0)}",unsafe_allow_html=True)
                     mar=bco.get('ma_results',[])
                     if mar:
                         rows=[{"Indicator":m.get('name',''),"Value":f"${m.get('value',0):,.2f}" if m.get('value') else "N/A","Signal":m.get('signal','N/A'),"Dist":f"{m.get('pct_diff',0):+.2f}%"} for m in mar]
                         st.dataframe(pd.DataFrame(rows),hide_index=True,use_container_width=True)
-
                     sh("OSCILLATORS (Daily)")
                     st.markdown(f"**Summary:** {sg(bco.get('osc_summary','N/A'))} — B:{bco.get('osc_buy',0)} / N:{bco.get('osc_neutral',0)} / S:{bco.get('osc_sell',0)}",unsafe_allow_html=True)
                     osr=bco.get('osc_results',[])
@@ -492,22 +445,21 @@ if run:
                     for lv in ['R3','R2','R1','PP','S1','S2','S3']:
                         row={"Level":lv}
                         for mt in ['Classic','Fibonacci','Woodie','Camarilla']:
-                            v=pivots.get(mt,{}).get(lv,0)
-                            pct=((v-cur)/cur)*100 if cur>0 else 0
+                            v=pivots.get(mt,{}).get(lv,0);pct=((v-cur)/cur)*100 if cur>0 else 0
                             row[mt]=f"${v:,.2f} ({pct:+.1f}%)"
                         prows.append(row)
                     st.dataframe(pd.DataFrame(prows),hide_index=True,use_container_width=True)
 
-            # ═══════════ TAB 5: FUNDAMENTALS ═══════════
-            with tab5:
+            # ═══════════ TAB 6: FUNDAMENTALS ═══════════
+            with tab6:
                 sh("SHARIAH (HALAL) COMPLIANCE")
-                hc2="h-pass" if h_status=="HALAL" else "h-fail" if h_status=="NON-COMPLIANT" else "h-warn"
-                st.markdown(f'<span class="{hc2}">{h_status}</span> &nbsp; ({halal.get("pass_count",0)}/{halal.get("total_checks",4)} criteria)',unsafe_allow_html=True)
+                hc3="h-pass" if h_status=="HALAL" else "h-fail" if h_status=="NON-COMPLIANT" else "h-warn"
+                st.markdown(f'<span class="{hc3}">{h_status}</span> &nbsp; ({halal.get("pass_count",0)}/{halal.get("total_checks",4)} criteria)',unsafe_allow_html=True)
                 for d in halal.get('details',[]):
                     ic="✅" if d['status']=='PASS' else "❌" if d['status']=='FAIL' else "⚠️"
                     st.markdown(f"{ic} **{d['criterion']}** — {d['status']} — {d['value']}")
                     if d.get('note'): st.caption(d['note'])
-                st.caption("Based on AAOIFI screening. Consult a Shariah scholar or certified platform (Musaffa, Zoya) for authoritative rulings.")
+                st.caption("Based on AAOIFI screening. Consult a Shariah scholar or certified platform (Musaffa, Zoya).")
 
                 sh("FUNDAMENTAL OVERVIEW")
                 fc1,fc2=st.columns(2)
@@ -518,10 +470,9 @@ if run:
                         elif isinstance(v,float) and not np.isnan(v): v=f"{v:.2f}"
                         mr(k,v)
                 with fc2:
-                    for k in ['Revenue','Revenue Growth','Profit Margin','Operating Margin','ROE','ROA','Debt/Equity','Current Ratio','Free Cash Flow','Dividend Yield','Beta','Avg Volume','52W High','52W Low','Target Price','Analyst Rating','Num Analysts']:
+                    for k in ['Revenue','Revenue Growth','Profit Margin','Operating Margin','ROE','ROA','Debt/Equity','Current Ratio','Free Cash Flow','Dividend Yield']:
                         v=fund.get(k,'N/A')
                         if k in ('Revenue','Free Cash Flow'): v=fmt(v,p="$")
-                        elif k in ('52W High','52W Low','Target Price'): v=fmt(v,p="$")
                         elif k in ('Revenue Growth','Profit Margin','Operating Margin','ROE','ROA','Dividend Yield'): v=fp(v)
                         elif isinstance(v,float) and not np.isnan(v): v=f"{v:.2f}"
                         mr(k,v)
