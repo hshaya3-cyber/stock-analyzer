@@ -3369,8 +3369,22 @@ def generate_report(ticker: str, df: pd.DataFrame, info: dict, signals: dict,
     # ── Signal Summary ──
     overall = signals.get('overall', 'NEUTRAL')
     score = signals.get('total_score', 0)
-    trend_sig, trend_score = signals.get('trend', ('NEUTRAL', 0))
-    mom_sig, mom_score = signals.get('momentum', ('NEUTRAL', 0))
+    if isinstance(score, tuple):
+        score = score[1] if len(score) > 1 else 0
+    trend_raw = signals.get('trend', ('NEUTRAL', 0))
+    if isinstance(trend_raw, tuple):
+        trend_sig, trend_score = trend_raw
+    else:
+        trend_sig, trend_score = str(trend_raw), 0
+    mom_raw = signals.get('momentum', ('NEUTRAL', 0))
+    if isinstance(mom_raw, tuple):
+        mom_sig, mom_score = mom_raw
+    else:
+        mom_sig, mom_score = str(mom_raw), 0
+    # Ensure scores are numeric
+    trend_score = int(trend_score) if isinstance(trend_score, (int, float)) else 0
+    mom_score = int(mom_score) if isinstance(mom_score, (int, float)) else 0
+    score = int(score) if isinstance(score, (int, float)) else 0
     vol_signal = signals.get('volume', 'NORMAL')
     vol_notes = signals.get('volatility', [])
 
