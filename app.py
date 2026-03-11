@@ -350,13 +350,14 @@ if run:
                         mr("Active Tool",f"Fibonacci {fib.get('active_tool','RETRACEMENT').upper()}")
                         if fib.get('current_zone'): mr("Current Zone",fib['current_zone'])
                     with f2:
-                        if fib.get('reason'): st.caption(fib['reason'])
-                    levels=fib.get('levels',{})
+                        if fib.get('active_reason'): st.caption(fib['active_reason'])
+                    levels=fib.get('active_levels',[])
                     if levels:
                         rows=[]
-                        for k,v in levels.items():
-                            pct=((v-cur)/cur)*100;marker=" ◄" if abs(pct)<2 else ""
-                            rows.append({"Level":k,"Price":f"${v:,.2f}","Distance":f"{pct:+.1f}%{marker}"})
+                        for lv in levels:
+                            pct=lv.get('dist_pct',0)
+                            marker=" ◄" if abs(pct)<2 else ""
+                            rows.append({"Level":lv.get('label',''),"Price":f"${lv.get('price',0):,.2f}","Distance":f"{pct:+.1f}%{marker}"})
                         st.dataframe(pd.DataFrame(rows),hide_index=True,use_container_width=True)
                 else: st.info(f"Fibonacci: {fib.get('reason','Insufficient data')}")
                 for tf in ['Weekly','Monthly']:
@@ -364,9 +365,13 @@ if run:
                     if tff.get('available'):
                         with st.expander(f"Fibonacci — {tf}"):
                             mr("Trend",tff.get('primary_trend','N/A'))
-                            lvls=tff.get('levels',{})
+                            mr("Swing High",f"${tff.get('swing_high',0):,.2f}")
+                            mr("Swing Low",f"${tff.get('swing_low',0):,.2f}")
+                            mr("Active Tool",f"Fibonacci {tff.get('active_tool','RETRACEMENT').upper()}")
+                            if tff.get('current_zone'): mr("Current Zone",tff['current_zone'])
+                            lvls=tff.get('active_levels',[])
                             if lvls:
-                                rows=[{"Level":k,"Price":f"${v:,.2f}","Dist":f"{((v-cur)/cur)*100:+.1f}%"} for k,v in lvls.items()]
+                                rows=[{"Level":lv.get('label',''),"Price":f"${lv.get('price',0):,.2f}","Dist":f"{lv.get('dist_pct',0):+.1f}%"} for lv in lvls]
                                 st.dataframe(pd.DataFrame(rows),hide_index=True,use_container_width=True)
 
                 sh("CHART PATTERNS")
